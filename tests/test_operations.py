@@ -7,8 +7,12 @@ from scripts import phase0
 
 
 def test_migration_replay_does_not_write(monkeypatch):
-    digest = hashlib.sha256((phase0.ROOT / "infra/migrations/0001_foundation.sql").read_bytes())
-    replies = iter([b"1", digest.hexdigest().encode()])
+    migrations = sorted((phase0.ROOT / "infra/migrations").glob("*.sql"))
+    replies = iter(
+        value
+        for path in migrations
+        for value in (b"1", hashlib.sha256(path.read_bytes()).hexdigest().encode())
+    )
     queries = []
 
     def execute(query):
@@ -17,7 +21,7 @@ def test_migration_replay_does_not_write(monkeypatch):
 
     monkeypatch.setattr(phase0, "sql", execute)
     phase0.migrate()
-    assert len(queries) == 2
+    assert len(queries) == 2 * len(migrations)
     assert all("INSERT" not in query for query in queries)
 
 

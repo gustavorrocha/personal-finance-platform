@@ -42,3 +42,15 @@ Antes de qualquer dado real: verificar BitLocker inclusive disco Docker/WSL, ACL
 exclusão de cloud sync, backup criptografado em segundo meio com chave independente,
 teste privado de restauração, política de retenção/exclusão e proteção do host.
 Não existe comando de backup completo de produção nesta fase.
+
+## Phase 1 recovery
+
+Run `scripts/validate_bronze.ps1` after startup to verify capture retries, quarantine,
+and isolated reconstruction. Use one writer at a time for capture and warehouse publication.
+
+To recover from a ClickHouse loss, keep the private Lake directory, start a fresh local
+instance with the migrations applied, and run `finance rebuild-warehouse --from-bronze`.
+If index registration fails after manifest publication, retry the same capture or replay
+its UUID once ClickHouse is available. When verification reports corruption, preserve the
+capture and its quarantine marker for investigation. A quarantined run cannot be replayed.
+The foundation backup covers the original synthetic probe. Back up the Lake independently.
