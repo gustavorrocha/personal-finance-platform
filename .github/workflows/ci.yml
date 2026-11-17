@@ -1,0 +1,47 @@
+name: Phase 0 synthetic checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+
+jobs:
+  synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FINANCE_PRIVATE_DIR: ${{ runner.temp }}/finance-phase0-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.6'
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - run: npm install --global npm@11.17.0 --ignore-scripts
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen pytest -q
+      - working-directory: apps/web
+        run: |
+          npm ci --ignore-scripts
+          npm run lint
+          npm test
+          npm run build
+          npm audit --audit-level=high
+      - run: |
+          uv run --frozen python -m scripts.prepare_ci
+          sudo chown -R 101:101 "$FINANCE_PRIVATE_DIR/clickhouse" "$FINANCE_PRIVATE_DIR/clickhouse-logs"
+          sudo chown -R 10001:10001 "$FINANCE_PRIVATE_DIR/models"
+          docker compose --env-file .env -f infra/compose.yaml config --quiet
+          docker compose --env-file .env -f infra/compose.yaml up -d --wait --wait-timeout 180 clickhouse ollama
+          uv run --frozen python -m scripts.phase0 migrate
+          uv run --frozen python -m scripts.phase0 migrate
+          docker compose --env-file .env -f infra/compose.yaml up -d --build --wait --wait-timeout 180 api web
+          uv run --frozen python -m scripts.phase0 load-synthetic
+          uv run --frozen python -m scripts.phase0 load-synthetic
+          uv run --frozen python -m scripts.phase0 verify
+          uv run --frozen python -m scripts.phase0 restore-test
+      - if: always()
+        run: docker compose --env-file .env -f infra/compose.yaml --profile verification down --remove-orphans
