@@ -7,9 +7,9 @@ jobs:
   synthetic:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      FINANCE_PRIVATE_DIR: ${{ runner.temp }}/finance-phase0-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Configure synthetic storage
+        run: echo "FINANCE_PRIVATE_DIR=$RUNNER_TEMP/finance-phase0-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
