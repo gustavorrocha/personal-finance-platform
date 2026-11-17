@@ -29,9 +29,13 @@ SQL cria somente `core`, `analytics`, `metadata`, ledger e tabela sintética de 
 A migração é idempotente, com checksum e execução por operador único, antes da API.
 Não há rollback destrutivo: para reverter uma mudança futura, adicionar migração compensatória.
 
-O contrato de Lake é abstrato: nenhuma escrita Bronze, manifesto, hash de objeto real ou replay
-foi implementado. Não há S3/MinIO nem segundo SGBD. Metadados financeiros também ficam para as
-respectivas fases. Retornos e valores monetários não são calculados na Fase 0.
+## Phase 1 extension
+
+The LocalObjectStore writes synthetic Bronze captures outside the repository and cloud sync.
+The operator CLI publishes a manifest after all gzip objects are durable. The API has no
+Lake mount. ClickHouse indexes can be reconstructed from the Lake. Warehouse replay stages
+a generation and publishes it with a final event after verification. See the
+[data contracts](data-contracts.md) and [publication decision](adr/ADR-014-bronze-replay-publication.md).
 
 Referências consultadas em 17/11/2026:
 [redes Compose](https://docs.docker.com/compose/how-tos/networking/),

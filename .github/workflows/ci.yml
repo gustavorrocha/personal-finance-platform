@@ -43,5 +43,6 @@ jobs:
           uv run --frozen python -m scripts.phase0 load-synthetic
           uv run --frozen python -m scripts.phase0 verify
           uv run --frozen python -m scripts.phase0 restore-test
+          uv run --frozen python -m scripts.validate_bronze
       - if: always()
         run: docker compose --env-file .env -f infra/compose.yaml --profile verification down --remove-orphans
