@@ -1,0 +1,4 @@
+[
+  {"event_id": 1, "amount": "12.34", "label": "synthetic-alpha"},
+  {"event_id": 2, "amount": "-2.34", "label": "synthetic-beta"}
+]

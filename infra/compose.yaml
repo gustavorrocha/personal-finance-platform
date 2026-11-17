@@ -1,0 +1,122 @@
+name: personal-finance
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 256
+  logging:
+    driver: local
+    options: {max-size: 5m, max-file: '2'}
+
+services:
+  clickhouse:
+    <<: *hardened
+    image: clickhouse/clickhouse-server:26.8.39.19
+    user: '101:101'
+    entrypoint: [clickhouse-server, --config-file=/etc/clickhouse-server/config.xml]
+    networks: [data]
+    mem_limit: 2g
+    volumes:
+      - ${FINANCE_PRIVATE_DIR:?Run bootstrap.ps1}/clickhouse:/var/lib/clickhouse
+      - ${FINANCE_PRIVATE_DIR}/clickhouse-logs:/var/log/clickhouse-server
+      - ./clickhouse/config.d/local.xml:/etc/clickhouse-server/config.d/local.xml:ro
+      - ./clickhouse/users.d/local.xml:/etc/clickhouse-server/users.d/local.xml:ro
+    secrets:
+      - source: health_user
+        target: /etc/clickhouse-server/users.d/health.xml
+    healthcheck:
+      test: [CMD, clickhouse-client, --host, 127.0.0.1, --query, SELECT 1]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ulimits:
+      nofile: {soft: 65536, hard: 65536}
+
+  api:
+    <<: *hardened
+    build: {context: .., dockerfile: apps/api/Dockerfile}
+    user: '10001:10001'
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
+    networks: [frontend, data]
+    ports: ['127.0.0.1:8000:8000']
+    mem_limit: 256m
+    secrets: [api_password]
+    depends_on:
+      clickhouse: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    <<: *hardened
+    build: {context: .., dockerfile: apps/web/Dockerfile}
+    user: '101:101'
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
+    networks: [frontend]
+    ports: ['127.0.0.1:8080:8080']
+    mem_limit: 128m
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ollama:
+    <<: *hardened
+    image: ollama/ollama:0.40.16
+    user: '10001:10001'
+    environment:
+      OLLAMA_NO_CLOUD: '1'
+      OLLAMA_HOST: '0.0.0.0:11434'
+      OLLAMA_MODELS: /models
+      HOME: /tmp
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+    networks: [ai]
+    mem_limit: 1g
+    volumes:
+      - ${FINANCE_PRIVATE_DIR}/models:/models
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  restore:
+    <<: *hardened
+    profiles: [verification]
+    image: clickhouse/clickhouse-server:26.8.39.19
+    user: '101:101'
+    entrypoint: [clickhouse-server, --config-file=/etc/clickhouse-server/config.xml]
+    networks: [recovery]
+    mem_limit: 1g
+    tmpfs:
+      - /var/lib/clickhouse:rw,nosuid,size=512m,uid=101,gid=101
+      - /var/log/clickhouse-server:rw,noexec,nosuid,size=32m,uid=101,gid=101
+    volumes:
+      - ./clickhouse/config.d/local.xml:/etc/clickhouse-server/config.d/local.xml:ro
+      - ./clickhouse/users.d/local.xml:/etc/clickhouse-server/users.d/local.xml:ro
+
+networks:
+  # Internal-only bridges suppress published ports; disable outbound NAT on this edge instead.
+  frontend:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: 'false'
+      com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'
+  data: {internal: true}
+  ai: {internal: true}
+  egress: {internal: true}
+  recovery: {internal: true}
+
+secrets:
+  api_password:
+    file: ${FINANCE_PRIVATE_DIR}/secrets/api_password
+  health_user:
+    file: ${FINANCE_PRIVATE_DIR}/secrets/health.xml
