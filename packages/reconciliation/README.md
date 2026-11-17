@@ -1,4 +1,3 @@
-# reconciliation
+# Reconciliation
 
-Fronteira reservada para a Fase 4: Reconciliação determinística de transferências e faturas.
-Sem implementação, dependências ou serviço em execução na Fase 0.
+Phase 4 introduces deterministic reconciliation of transfers and card bills.

@@ -1,19 +1,19 @@
-# ADR-012: Precisão e informação ausente
+# ADR-012 — Financial precision and missing information
 
-Data: 17/11/2026. Status: Direção aceita; execução financeira nas fases futuras.
+November 17, 2026. Accepted for later financial phases.
 
-## Contexto
+## Context
 
-Um número financeiro incorreto é falha crítica.
+Incorrect financial results are critical.
 
-## Decisão
+## Decision
 
-Decimal para dinheiro, datas econômicas distintas de timestamps UTC e qualidade explícita; ETF não define classe econômica.
+Use Decimal for money, distinguish economic dates from UTC timestamps, and expose quality. Track economic exposure separately from ETF vehicle type.
 
-## Alternativas
+## Alternatives
 
-Float monetário, retorno inventado ou soma de versões produzem falsos resultados.
+Floating-point money, invented returns, and aggregation across versions produce misleading results.
 
-## Consequências
+## Consequences
 
-A Fase 0 testa Decimal só na fixture; não calcula retorno, exposição ou reconciliação.
+Phase 0 exercises Decimal in a fixture. Returns, exposure, and reconciliation are later deliverables.
