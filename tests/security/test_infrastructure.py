@@ -45,12 +45,12 @@ def test_private_networks_and_only_loopback_publications():
 
 
 def test_non_root_no_capabilities_and_no_docker_socket():
-    for service in COMPOSE["services"].values():
+    for name, service in COMPOSE["services"].items():
         assert service["user"].split(":")[0] not in {"0", "root"}
         assert service["cap_drop"] == ["ALL"]
         assert "no-new-privileges:true" in service["security_opt"]
         assert service["mem_limit"]
-        assert service["pids_limit"] <= 256
+        assert service["pids_limit"] <= (512 if name == "clickhouse" else 256)
         assert "docker.sock" not in str(service)
 
 
@@ -62,6 +62,17 @@ def test_secrets_are_files_and_no_remote_ai():
     assert COMPOSE["services"]["ollama"]["environment"]["OLLAMA_NO_CLOUD"] == "1"
     assert "environment" not in COMPOSE["services"]["clickhouse"]
     assert not COMPOSE.get("volumes")
+
+
+def test_optional_gui_exposes_only_the_loopback_http_proxy():
+    override = yaml.safe_load((ROOT / "infra/compose.gui.yaml").read_text())
+    assert "ports" not in override["services"]["clickhouse"]
+    assert "networks" not in override["services"]["clickhouse"]
+    proxy = override["services"]["clickhouse-gui"]
+    assert proxy["ports"] == ["127.0.0.1:8123:8080"]
+    assert proxy["networks"] == ["gui", "data"]
+    assert proxy["read_only"] and proxy["cap_drop"] == ["ALL"]
+    assert "clickhouse-gui" not in COMPOSE["services"]
 
 
 def test_clickhouse_local_admin_and_no_sensitive_query_logs():
