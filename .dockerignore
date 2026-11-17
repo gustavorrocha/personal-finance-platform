@@ -1,0 +1,11 @@
+.git
+.venv
+.uv-cache
+**/__pycache__
+**/node_modules
+**/dist
+.env*
+private_data
+artifacts
+docs
+tests
