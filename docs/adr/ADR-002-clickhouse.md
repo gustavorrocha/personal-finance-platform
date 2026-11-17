@@ -1,19 +1,19 @@
-# ADR-002: ClickHouse como único SGBD
+# ADR-002 — ClickHouse as the only database
 
-Data: 17/11/2026. Status: Aceita na Fase 0.
+November 17, 2026. Accepted in Phase 0.
 
-## Contexto
+## Context
 
-Restrição vinculante do plano; operações interativas futuras precisam conviver com OLAP.
+Future interactive operations must coexist with OLAP under the single-database constraint.
 
-## Decisão
+## Decision
 
-core, analytics e metadata são databases ClickHouse. Não adicionar SQLite, PostgreSQL ou Redis.
+Use ClickHouse databases named core, analytics, and metadata. Keep SQLite, PostgreSQL, and Redis out of the stack.
 
-## Alternativas
+## Alternatives
 
-Banco transacional adicional violaria o escopo e aumentaria operação.
+An extra transactional database would increase operations and violate scope.
 
-## Consequências
+## Consequences
 
-Na Fase 0 há somente ledger de migração e tabela sintética; merges não oferecem unicidade transacional.
+Phase 0 uses a migration ledger and a synthetic table. MergeTree merges do not guarantee transactional uniqueness.

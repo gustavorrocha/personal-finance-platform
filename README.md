@@ -64,6 +64,11 @@ and [the publication decision](docs/adr/ADR-014-bronze-replay-publication.md).
 
 ## Foundation checks and shutdown
 
+For a local database GUI, run `scripts/clickhouse_gui.ps1` and connect over HTTP to
+`127.0.0.1:8123` with user `finance_reader`, database `metadata`, and the password
+in `secrets/finance-reader.password` under the private storage directory.
+See the [GUI runbook](docs/operations-runbook.md#optional-clickhouse-gui) to disable access.
+
 ```powershell
 .\scripts\load_synthetic.ps1
 .\scripts\verify_security.ps1

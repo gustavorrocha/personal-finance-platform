@@ -1,19 +1,19 @@
-# ADR-009: IA exclusivamente local
+# ADR-009 — Local AI with human review
 
-Data: 17/11/2026. Status: Preparação na Fase 0; inferência na Fase 6.
+November 17, 2026. Prepared in Phase 0, inference planned for Phase 6.
 
-## Contexto
+## Context
 
-Dados financeiros reais não podem ir para LLM externa.
+Real financial data must stay out of external LLM services.
 
-## Decisão
+## Decision
 
-Ollama sem publicação, OLLAMA_NO_CLOUD=1 e rede interna ai; nenhum modelo ou consumidor agora.
+Keep Ollama on the internal AI network with OLLAMA_NO_CLOUD=1 and unpublished ports. Introduce the model and consumer in Phase 6.
 
-## Alternativas
+## Alternatives
 
-APIs LLM remotas não atendem à privacidade; baixar modelo em runtime exigiria egress.
+Remote APIs conflict with the privacy boundary. Runtime model downloads require egress.
 
-## Consequências
+## Consequences
 
-Bootstrap de modelos será separado; saída será não confiável, validada e submetida à revisão.
+Bootstrap models separately. Treat output as untrusted, validate it, and route it for review.

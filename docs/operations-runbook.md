@@ -1,56 +1,30 @@
-# Operação e recuperação — somente sintético
+# Synthetic operations and recovery
 
-1. `bootstrap.ps1` instala dependências congeladas, valida o diretório, restringe ACL e gera segredos.
-2. `run_local.ps1` sobe o banco e Ollama, aplica SQL e aguarda saúde de API/web.
-3. `load_synthetic.ps1` insere dois eventos determinísticos; repetir não adiciona linhas.
-4. `verify_security.ps1` verifica publicações reais, redes, portas no host, saúde e logs com token falso.
-   Faz também conexão de teste para IP externo no namespace de rede do Ollama; deve falhar.
-5. `restore_test.ps1` cria novo backup criptografado, autentica o envelope, valida checksum,
-   restaura em ClickHouse descartável em tmpfs e compara checksum/contagem das linhas.
-6. `docker compose --env-file .env -f infra/compose.yaml down` para serviços preservando dados.
+1. Run `bootstrap.ps1` to install locked dependencies, validate the private directory, restrict ACLs, and generate secrets.
+2. Run `run_local.ps1` to start ClickHouse and Ollama, apply SQL migrations, and wait for API and web health.
+3. Run `load_synthetic.ps1` to insert two deterministic events. Repeated runs preserve the count.
+4. Run `verify_security.ps1` in the default configuration to check network membership, bindings, host ports, health, fake-token log handling, and expected blocked database/AI egress.
+5. Run `restore_test.ps1` to restore an encrypted synthetic backup in a disposable ClickHouse container and compare row counts and checksums.
+6. Use `docker compose --env-file .env -f infra/compose.yaml down` to stop the default stack while preserving data.
 
-Network clarification: only the publishing frontend uses a non-internal bridge, with outbound
-masquerading disabled and host bindings restricted to 127.0.0.1. Internal data and AI networks
-remain isolated. The verifier tests external TCP blocking in the database and Ollama namespaces;
-API/web outbound access remains possible on the tested Docker Desktop host. Configure host
-firewall policy if stronger frontend egress restrictions are required.
+The port scan covers loopback and host IPv4. An unrelated service on a sensitive port fails the check. Investigate the process and verify the firewall, LAN, IPv6, and Docker Desktop or WSL separately when needed.
 
-O scanner de portas inclui loopback e IPv4 do hostname. Não substitui teste de outra máquina,
-firewall, IPv6 ou inspeção do Docker Desktop/WSL. Um serviço local alheio nas portas sensíveis
-provoca falha conservadora; investigue o processo em vez de enfraquecer a verificação.
+To recover a lost API health secret, stop the stack, confirm the private directory and its ACL, remove the individual `secrets/api_password` and `secrets/health.xml` files, then rerun bootstrap and recreate the containers. Preserve `keys/backup.key` to restore existing backups. Keep logs, hashes, secret files, and data dumps private.
 
-Segredo perdido: parar a stack, remover somente os arquivos individuais `secrets/api_password`
-e `secrets/health.xml` da pasta privada que foi conferida e executar bootstrap novamente;
-recriar containers. Não publicar logs, hashes de senha ou arquivos de segredo.
-Chave de backup perdida: backups existentes não poderão ser restaurados; não sobrescrever
-`keys/backup.key`. Rotação e cópia em meio independente são pré-requisitos de uso real futuro.
+The API logs event and level. Nginx omits request logs and ClickHouse disables persistent query, text, and trace logs. Diagnose command failures locally.
 
-Falhas de comandos retornam mensagem genérica; investigar localmente sem enviar dumps para CI.
-Logs API preservam apenas evento e nível. Nginx não registra URL/headers e ClickHouse não
-persiste query/text/trace logs. Isso reduz diagnóstico e será revisado quando houver ingestão.
+Migration checksums protect applied SQL files. Run one migrator at a time. If a run stops partway through, rerun the idempotent DDL. The synthetic probe is for validating infrastructure.
 
-A migração `0001` deve permanecer imutável. Hash divergente falha fechado.
-DDL ClickHouse não é transação entre tabelas: uma interrupção exige repetir DDL idempotente.
-Não executar dois migradores ao mesmo tempo. A tabela sintética não é um modelo financeiro.
-
-Retenção nesta fase: apagar os arquivos sintéticos de backup de mais de sete dias sob supervisão,
-após conferir caminho/ACL e verificar ao menos uma restauração. Não há remoção automática.
-Meta de laboratório RPO: última execução do backup; RTO: até 15 min após Docker disponível,
-**não medido**. Backups locais no mesmo disco não cobrem perda do notebook.
-
-Antes de qualquer dado real: verificar BitLocker inclusive disco Docker/WSL, ACL herdada,
-exclusão de cloud sync, backup criptografado em segundo meio com chave independente,
-teste privado de restauração, política de retenção/exclusão e proteção do host.
-Não existe comando de backup completo de produção nesta fase.
+For synthetic backups older than seven days, confirm the path and ACL and verify a restore before operator-supervised removal. The lab targets recovery to the last backup and an RTO of up to 15 minutes after Docker is available. RTO is unmeasured. Same-disk backups cannot recover from laptop loss. Before real data, verify BitLocker/WSL, cloud sync exclusions, host protection, retention, independently keyed encrypted backups on a second medium, and a private restore. A production backup workflow belongs to a later phase.
 
 ## Phase 1 recovery
 
-Run `scripts/validate_bronze.ps1` after startup to verify capture retries, quarantine,
-and isolated reconstruction. Use one writer at a time for capture and warehouse publication.
+Run `scripts/validate_bronze.ps1` after startup to verify retries, quarantine, and isolated reconstruction. Run capture and warehouse publication with one writer at a time. If ClickHouse is lost, preserve the private Lake, apply the migrations to a fresh instance, and run `finance rebuild-warehouse --from-bronze`. If indexing fails after the manifest is published, retry the capture or replay its UUID once ClickHouse is available. Preserve quarantined evidence for investigation. The foundation backup covers the probe table, and the Lake needs an independent backup.
 
-To recover from a ClickHouse loss, keep the private Lake directory, start a fresh local
-instance with the migrations applied, and run `finance rebuild-warehouse --from-bronze`.
-If index registration fails after manifest publication, retry the same capture or replay
-its UUID once ClickHouse is available. When verification reports corruption, preserve the
-capture and its quarantine marker for investigation. A quarantined run cannot be replayed.
-The foundation backup covers the original synthetic probe. Back up the Lake independently.
+## Optional ClickHouse GUI
+
+Run `scripts/clickhouse_gui.ps1` after applying the Bronze migrations. Configure the client for HTTP on `127.0.0.1:8123` with user `finance_reader`, database `metadata`, and the password in `secrets/finance-reader.password` under the private directory. The script keeps the password off the console. The proxy is local, and the reader can query synthetic tables and the sources required by their views.
+
+The GUI table browser needs the `database`, `table`, and `data_compressed_bytes` columns in `system.parts` to display storage sizes. Rerun `scripts/clickhouse_gui.ps1` to refresh an existing reader configuration, then reconnect or refresh the table list.
+
+Run `scripts/clickhouse_gui.ps1 -Disable` to remove the proxy and reload ClickHouse without the reader. Disable GUI access before the default port-security test. Changes to the GUI configuration can briefly restart ClickHouse.

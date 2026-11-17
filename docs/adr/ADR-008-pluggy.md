@@ -1,19 +1,19 @@
-# ADR-008: Integração somente leitura e auditoria prévia
+# ADR-008 — Read-only integration and pre-ingestion audit
 
-Data: 17/11/2026. Status: Direção aceita; execução na Fase 2.
+November 17, 2026. Accepted for Phase 2.
 
-## Contexto
+## Context
 
-Cobertura real e paginação precisam de auditoria antes de ingestão.
+Verify actual resource coverage and pagination before ingestion.
 
-## Decisão
+## Decision
 
-Futura conexão read-only, cursor opaco em transações e paginação por endpoint; sem credenciais bancárias.
+Use read-only connections, opaque transaction cursors, and endpoint-specific pagination. Keep bank credentials out of the integration.
 
-## Alternativas
+## Alternatives
 
-Assumir cobertura completa ou implementar pagamentos conflita com o plano.
+Assuming coverage or implementing payments would conflict with the plan.
 
-## Consequências
+## Consequences
 
-Nenhuma chamada, credencial, SDK, endpoint Pluggy ou auditoria real nesta entrega.
+Phase 2 introduces the provider client and coverage audit.

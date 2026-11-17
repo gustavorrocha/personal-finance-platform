@@ -1,7 +1,7 @@
 # Phase 1 — implementation and validation
 
-Branch: `feat/bronze-storage`. Status: local implementation awaiting review.
-No commits, pushes, PRs, provider access or Phase 2 work have been performed.
+The Bronze implementation was committed locally on `feat/bronze-storage` as `800c2f9`.
+Hosted CI for Phase 1 awaits publication. Provider access belongs to Phase 2.
 
 ## Delivered
 

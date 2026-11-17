@@ -1,6 +1,3 @@
-# Registros de decisão
+# Architecture decision records
 
-As ADRs 001–013 correspondem ao inventário do plano completo.
-Direções de fases futuras estão registradas, sem antecipar implementação.
-Phase 1 implements ADR-004 and adds [ADR-014](ADR-014-bronze-replay-publication.md) for
-manifest recovery and warehouse publication.
+ADRs 001–013 correspond to the implementation plan. ADR-004 records the local storage implementation. [ADR-014](ADR-014-bronze-replay-publication.md) covers manifest recovery and warehouse publication.

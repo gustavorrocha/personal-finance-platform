@@ -1,19 +1,19 @@
-# ADR-001: Monorepo Python/TypeScript
+# ADR-001 — Python and TypeScript monorepo
 
-Data: 17/11/2026. Status: Aceita na Fase 0.
+November 17, 2026. Accepted in Phase 0.
 
-## Contexto
+## Context
 
-API e domínio futuro precisam de fronteiras explícitas e checks reproduzíveis.
+The API and future domain code need explicit boundaries and reproducible checks.
 
-## Decisão
+## Decision
 
-Workspace uv para API/Lake; npm separado para React. Ruff/Pytest e CI usam apenas dados sintéticos.
+Use uv workspaces for the API and Lake and npm for React. Ruff, Pytest, and CI use synthetic data.
 
-## Alternativas
+## Alternatives
 
-Múltiplos repositórios duplicariam operação; workspace não exige serviços por pacote.
+Separate repositories would duplicate operations. A workspace does not require a service per package.
 
-## Consequências
+## Consequences
 
-Manter uv.lock e package-lock.json; novos módulos só ganham implementação na fase prevista.
+Keep uv.lock and package-lock.json current. Implement modules in their planned phases.
