@@ -52,6 +52,19 @@ def test_category_corrections_require_local_origin_and_validate_before_database(
         assert rejected.json() == {"detail": "Invalid request"}
 
 
+def test_dashboard_describes_demo_without_relying_on_english_labels(monkeypatch):
+    async def connections(_query):
+        return [
+            {"id": spending.DEMO_ITEM, "latest_month": "2026-11"},
+            {"id": "10000000-0000-4000-8000-100000000001", "latest_month": "2026-11"},
+        ]
+
+    monkeypatch.setattr(spending, "dashboard_query", connections)
+    with TestClient(app) as client:
+        page = client.get("/api/spending").json()
+        assert [row["is_demo"] for row in page["connections"]] == [True, False]
+
+
 def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_warehouse, monkeypatch):
     silver = isolated_warehouse()
     assert load_demo(silver) == 11
@@ -65,6 +78,7 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         assert response.status_code == 200
         page = response.json()
         assert page["selected"]["label"] == "Synthetic demo"
+        assert page["selected"]["is_demo"] is True
         net = next(row for row in page["totals"] if row["bucket"] is None)
         assert Decimal(net["total"]) == Decimal("257.03")
         assert len(page["expenses"]) == 7
