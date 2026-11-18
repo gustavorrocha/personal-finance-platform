@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 
+from scripts.configure_dashboard import configure
 from scripts.phase0 import validate_private_path
 
 
@@ -29,6 +30,7 @@ def main() -> None:
     (private / "keys/backup.key").write_bytes(os.urandom(32))
     (private / "keys/backup.key").chmod(0o600)
     (private / ".finance-phase0").write_text("synthetic-only-v1")
+    configure(private)
     Path(".env").write_text(f"FINANCE_PRIVATE_DIR={private.as_posix()}\n")
 
 

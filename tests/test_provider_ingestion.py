@@ -224,8 +224,8 @@ def isolated_warehouse(pipeline):
         command(COMPOSE + ["run", "--rm", "--no-deps", "-d", "--name", name, "restore"])
         names.append(name)
 
-        def execute(query, native=b""):
-            return sql(query, container=name, native=native)
+        def execute(query, native=b"", **parameters):
+            return sql(query, container=name, native=native, parameters=parameters)
 
         for _ in range(40):
             try:
