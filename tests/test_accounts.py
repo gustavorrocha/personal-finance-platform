@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from finance_api import accounts
 from finance_api.main import app
 from finance_ingestion.collection import collect
+from finance_ingestion.spending_demo import load_account_demo, load_demo
 
 from tests.test_provider_ingestion import ITEM, NEW_ITEM, WHEN
 from tests.test_provider_ingestion import isolated_warehouse as isolated_warehouse
@@ -51,3 +52,15 @@ def test_account_snapshot_scopes_distinct_connections_and_keeps_reported_values(
             account_ids.add(row["id"])
         assert len(account_ids) == 2
         assert client.get("/api/accounts", params={"item": str(uuid4())}).status_code == 404
+
+        assert load_demo(silver) == 16
+        for _ in range(2):
+            assert load_account_demo(silver) == 4
+        report = client.get("/api/accounts").json()
+        demo = next(connection for connection in report["connections"] if connection["is_demo"])
+        preview = client.get("/api/accounts", params={"item": demo["id"]}).json()
+        assert {(row["currency"], row["balance"]) for row in preview["accounts"]} == {
+            ("BRL", "1850.75"),
+            ("BRL", "-320.4"),
+            ("USD", None),
+        }

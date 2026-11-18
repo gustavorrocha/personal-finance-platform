@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { AccountsView } from "./accounts";
 import {
   categoryLabel,
   deviceLocale,
@@ -46,7 +47,12 @@ const years = Array.from(
   (_, index) => 2148 - index,
 );
 
+function currentView() {
+  return window.location.hash === "#accounts" ? "accounts" : "spending";
+}
+
 function App() {
+  const [view, setView] = useState(currentView);
   const [preference, setPreference] = useState(readLanguagePreference);
   const locale =
     preference === "device" ? deviceLocale(navigator.languages) : preference;
@@ -71,9 +77,15 @@ function App() {
   const [activeYear, activeMonth] = (month || data?.month || "").split("-");
 
   useEffect(() => {
+    const switchView = () => setView(currentView());
+    window.addEventListener("hashchange", switchView);
+    return () => window.removeEventListener("hashchange", switchView);
+  }, []);
+
+  useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = `${copy.title} | ${copy.brand}`;
-  }, [locale, copy]);
+    document.title = `${view === "accounts" ? copy.accounts : copy.title} | ${copy.brand}`;
+  }, [locale, copy, view]);
 
   function changeLanguage(value: LanguagePreference) {
     setPreference(value);
@@ -86,6 +98,7 @@ function App() {
   }
 
   useEffect(() => {
+    if (view !== "spending") return;
     const request = new AbortController();
     const query = new URLSearchParams();
     if (item) query.set("item", item);
@@ -105,7 +118,7 @@ function App() {
         if (!request.signal.aborted) setLoading(false);
       });
     return () => request.abort();
-  }, [item, month, revision]);
+  }, [item, month, revision, view]);
 
   useEffect(() => {
     setAttempted([]);
@@ -222,7 +235,22 @@ function App() {
           </div>
         </div>
       </header>
-      <main className="frame" aria-busy={loading}>
+      <nav className="frame dashboard-nav" aria-label={copy.dashboardViews}>
+        <a
+          href="#spending"
+          aria-current={view === "spending" ? "page" : undefined}
+        >
+          {copy.spendingView}
+        </a>
+        <a
+          href="#accounts"
+          aria-current={view === "accounts" ? "page" : undefined}
+        >
+          {copy.accounts}
+        </a>
+      </nav>
+      {view === "accounts" && <AccountsView locale={locale} />}
+      <main className="frame" hidden={view !== "spending"} aria-busy={loading}>
         <div className="intro">
           <h1>{copy.title}</h1>
           <div className="filters">

@@ -48,6 +48,21 @@ body {
 main {
   padding-block: 2.75rem 4rem;
 }
+.dashboard-nav {
+  display: flex;
+  gap: 0.7rem;
+  margin-block-start: 1.1rem;
+}
+.dashboard-nav a {
+  border-radius: 0.35rem;
+  color: inherit;
+  padding: 0.45rem 0.75rem;
+  text-decoration: none;
+}
+.dashboard-nav a[aria-current] {
+  background: #e5efe5;
+  font-weight: 700;
+}
 .intro {
   display: flex;
   flex-wrap: wrap;

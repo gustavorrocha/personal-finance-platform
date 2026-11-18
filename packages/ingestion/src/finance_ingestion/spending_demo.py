@@ -79,9 +79,45 @@ def publish_demo(
     name: str,
     rows: list[dict],
 ) -> int:
+    return commit_demo(
+        silver,
+        item,
+        name,
+        datetime(2026, 11, 17, tzinfo=UTC),
+        [
+            CapturePage(
+                "accounts", json_bytes({"results": [{"id": account, "type": account_type}]})
+            ),
+            CapturePage(
+                "transactions",
+                json_bytes({"results": rows, "next": None}),
+                entity_key(item, "accounts", account),
+            ),
+        ],
+    )
+
+
+def load_account_demo(silver: SilverWarehouse) -> int:
+    accounts = [
+        {"id": REVIEW_ACCOUNT, "type": "BANK", "balance": 1850.75, "currencyCode": "BRL"},
+        {"id": DEMO_ACCOUNT, "type": "CREDIT", "balance": -320.40, "currencyCode": "BRL"},
+        {"id": "10000000-0000-4000-8000-100000000004", "type": "BANK", "currencyCode": "USD"},
+    ]
+    return commit_demo(
+        silver,
+        item_key(DEMO_SOURCE),
+        "account-demo-v1",
+        datetime(2026, 11, 18, tzinfo=UTC),
+        [CapturePage("accounts", json_bytes({"results": accounts}))],
+    )
+
+
+def commit_demo(
+    silver: SilverWarehouse, item: UUID, name: str, observed: datetime, pages: list[CapturePage]
+) -> int:
     manifest = silver.lake.commit(
         run_id=uuid5(NAMESPACE_URL, f"finance:{name}"),
-        retrieved_at=datetime(2026, 11, 17, tzinfo=UTC),
+        retrieved_at=observed,
         item_alias=f"item-{item.hex}",
         capture_kind="full",
         payloads=[
@@ -95,14 +131,7 @@ def publish_demo(
                     }
                 ),
             ),
-            CapturePage(
-                "accounts", json_bytes({"results": [{"id": account, "type": account_type}]})
-            ),
-            CapturePage(
-                "transactions",
-                json_bytes({"results": rows, "next": None}),
-                entity_key(item, "accounts", account),
-            ),
+            *pages,
         ],
     )
     return silver.replay(manifest.run_id)
