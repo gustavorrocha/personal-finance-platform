@@ -44,6 +44,6 @@ jobs:
           uv run --frozen python -m scripts.phase0 verify
           uv run --frozen python -m scripts.phase0 restore-test
           uv run --frozen python -m scripts.validate_bronze
-          FINANCE_TEST_CLICKHOUSE=1 uv run --frozen pytest -q tests/test_provider_ingestion.py tests/test_spending.py tests/test_accounts.py
+          FINANCE_TEST_CLICKHOUSE=1 uv run --frozen pytest -q tests/test_provider_ingestion.py tests/test_spending.py tests/test_accounts.py tests/test_investments.py
       - if: always()
         run: docker compose --env-file .env -f infra/compose.yaml --profile verification down --remove-orphans

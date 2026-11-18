@@ -1,4 +1,6 @@
-# Account snapshots
+# Holdings snapshots
+
+## Accounts
 
 Open **Accounts** (**Contas**) in the dashboard. The view follows the dashboard's
 language preference. Select a connection to see each reported balance with its
@@ -38,3 +40,29 @@ Validation passed 90 Python tests with disposable ClickHouse and six frontend
 tests. A Docker smoke test verified the localhost proxy and restricted grants.
 Headless Chrome verified that the Portuguese Accounts view displays the demo
 balances and marks the missing USD balance as unavailable.
+
+## Investments API
+
+`GET /api/investments` returns the latest reported observation for each position
+within a connection. It selects a single connection automatically. When multiple
+connections are available, pass a pseudonymous ID from `connections` as `item`.
+Each response returns up to 200 positions and includes a `truncated` flag.
+Positions with the same ticker stay separate. If a later capture omits a position,
+its previous observation can still appear.
+
+The API returns ticker when available in a supported ticker format, type, subtype,
+status, currency, net balance, gross amount, quantity, unit price, reference date,
+maturity date, and UTC observation time. Monetary and quantity values use decimal
+strings. Missing fields stay null. The reference date describes the reported
+position value, while the observation timestamp records when ingestion saw it.
+The provider defines the balance as net and the amount as gross.
+[Investment field definitions](https://docs.pluggy.ai/en/docs/products/investments)
+
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:8080/api/investments'
+```
+
+All 92 Python tests passed with disposable ClickHouse. Ruff and workflow lint
+passed. An isolated Docker build verified the localhost route with a synthetic
+position and confirmed that the dashboard role could read the investment view
+while ClickHouse denied access to the underlying provider table.
