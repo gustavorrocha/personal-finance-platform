@@ -14,12 +14,23 @@ from tests.test_provider_ingestion import pipeline as pipeline
 
 def test_spending_requires_purchase_evidence_and_excludes_transfers_and_settlements():
     debit = {"type": "DEBIT", "description": "Synthetic Market"}
-    assert spending_fields(debit, "tx")["spending_kind"] == ""
+    assert spending_fields(debit, "tx")["spending_kind"] == "review"
     card = {**debit, "creditCardMetadata": {}, "category": "Groceries"}
     assert spending_fields(card, "tx")["spending_kind"] == "purchase"
     assert spending_fields(card, "tx")["spending_category"] == "Groceries"
-    for operation in ("PIX", "TED", "PAGAMENTO_FATURA"):
+    for operation in ("TRANSFER", "PAGAMENTO_FATURA"):
         assert spending_fields({**card, "operationType": operation}, "tx")["spending_kind"] == ""
+    for operation in ("PIX", "TED"):
+        assert (
+            spending_fields({**debit, "operationType": operation}, "tx")["spending_kind"]
+            == "review"
+        )
+        assert (
+            spending_fields({**debit, "operationType": operation, "category": "Transfer"}, "tx")[
+                "spending_kind"
+            ]
+            == ""
+        )
     refund = {**card, "type": "CREDIT", "operationType": "ESTORNO"}
     assert spending_fields(refund, "tx")["spending_kind"] == "refund"
     assert (
@@ -50,6 +61,10 @@ def test_category_corrections_require_local_origin_and_validate_before_database(
         )
         assert rejected.status_code == 422
         assert rejected.json() == {"detail": "Invalid request"}
+        review = {"item": body["item"], "transaction": body["transaction"], "decision": "include"}
+        assert (
+            client.post("/api/spending/reviews", headers=external, json=review).status_code == 403
+        )
 
 
 def test_dashboard_describes_demo_without_relying_on_english_labels(monkeypatch):
@@ -67,7 +82,7 @@ def test_dashboard_describes_demo_without_relying_on_english_labels(monkeypatch)
 
 def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_warehouse, monkeypatch):
     silver = isolated_warehouse()
-    assert load_demo(silver) == 11
+    assert load_demo(silver) == 16
 
     async def execute(query, **parameters):
         return [json.loads(line) for line in silver.execute(query, **parameters).splitlines()]
@@ -82,6 +97,7 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         net = next(row for row in page["totals"] if row["bucket"] is None)
         assert Decimal(net["total"]) == Decimal("257.03")
         assert len(page["expenses"]) == 7
+        assert [row["merchant"] for row in page["reviews"]] == ["Harbor Books"]
         assert {row["merchant"] for row in page["expenses"]}.isdisjoint(
             {"Museum Studio", "Card statement"}
         )
@@ -96,5 +112,34 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         assert {
             row["category"] for row in updated["expenses"] if row["merchant"] == "West Market"
         } == {"Home"}
-        assert load_demo(silver) == 11
+        assert load_demo(silver) == 16
         assert client.get("/api/spending").json() == updated
+        review = page["reviews"][0]
+        request = {"item": page["selected"]["id"], "transaction": review["id"]}
+        headers = {"Origin": "http://127.0.0.1:8080"}
+        wrong_item = "10000000-0000-4000-8000-100000000002"
+        assert (
+            client.post(
+                "/api/spending/reviews",
+                headers=headers,
+                json={**request, "item": wrong_item, "decision": "include"},
+            ).status_code
+            == 404
+        )
+        for decision, expected in (
+            ("include", "280.53"),
+            ("include", "280.53"),
+            ("exclude", "257.03"),
+            ("reset", "257.03"),
+        ):
+            assert (
+                client.post(
+                    "/api/spending/reviews", headers=headers, json={**request, "decision": decision}
+                ).status_code
+                == 204
+            )
+            assert load_demo(silver) == 16
+            report = client.get("/api/spending").json()
+            net = next(row for row in report["totals"] if row["bucket"] is None)
+            assert Decimal(net["total"]) == Decimal(expected)
+            assert report["reviews"][0]["decision"] == ("" if decision == "reset" else decision)

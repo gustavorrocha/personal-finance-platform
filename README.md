@@ -17,7 +17,9 @@ Start-Process http://127.0.0.1:8080
 
 Select **Synthetic demo** if you have multiple connections. November 2026 shows
 **BRL 257.03** across seven posted entries. Change the category of one West Market
-row to check that all three matching entries update. The demo uses invented data and
+row to check that all three matching entries update. In **Debit review**, include
+the Harbor Books debit to see the total rise to **BRL 280.53**. Reset the
+decision to return to **BRL 257.03**. The demo uses invented data and
 requires no Pluggy credentials. See the [spending runbook](docs/spending.md).
 
 ## Run on Windows

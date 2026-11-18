@@ -178,6 +178,11 @@ meter::-moz-meter-bar {
 .table-wrap {
   overflow-x: auto;
 }
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
 table {
   border-collapse: collapse;
   width: 100%;

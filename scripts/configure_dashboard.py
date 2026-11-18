@@ -36,7 +36,9 @@ def configure(private: Path) -> None:
         "<networks><ip>0.0.0.0/0</ip></networks><profile>default</profile>"
         "<quota>default</quota><grants>"
         "<query>GRANT SELECT ON analytics.spending_current</query>"
+        "<query>GRANT SELECT ON analytics.spending_dashboard</query>"
         "<query>GRANT INSERT ON core.spending_rules</query>"
+        "<query>GRANT INSERT ON core.spending_reviews</query>"
         "</grants></dashboard></users></clickhouse>"
     )
     if not config_file.exists() or config_file.read_text(encoding="utf-8") != config:
