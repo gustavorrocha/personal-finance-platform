@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc --noEmit && node build.mjs",
     "lint": "tsc --noEmit && prettier --check src index.html build.mjs tsconfig.json package.json",
-    "test": "node --test src/health.test.ts"
+    "test": "node --test src/*.test.ts"
   },
   "dependencies": {
     "react": "^19.2.0",
