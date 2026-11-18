@@ -1,7 +1,7 @@
 """Create a repeatable synthetic observation using the regular Bronze-to-Silver path."""
 
 from datetime import UTC, datetime
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from finance_lake.bronze import CapturePage
 from finance_lake.manifest import json_bytes
@@ -11,11 +11,11 @@ from .silver import SilverWarehouse
 
 DEMO_SOURCE = "10000000-0000-4000-8000-100000000001"
 DEMO_ACCOUNT = "10000000-0000-4000-8000-100000000002"
+REVIEW_ACCOUNT = "10000000-0000-4000-8000-100000000003"
 
 
 def load_demo(silver: SilverWarehouse) -> int:
     item = item_key(DEMO_SOURCE)
-    account = entity_key(item, "accounts", DEMO_ACCOUNT)
     inputs = (
         (15, "West Market", 84.23, "Groceries", "DEBIT", "", "POSTED"),
         (14, "Juniper Cafe", 27.60, "Restaurants", "DEBIT", "", "POSTED"),
@@ -45,8 +45,42 @@ def load_demo(silver: SilverWarehouse) -> int:
             inputs
         )
     ]
+    review_rows = [
+        {
+            "id": str(uuid5(item, "review-" + str(index))),
+            "accountId": REVIEW_ACCOUNT,
+            "date": "2026-11-13",
+            "currencyCode": "BRL",
+            "merchant": {"name": name},
+            "amount": amount,
+            "operationType": operation,
+            "status": status,
+            "type": "DEBIT",
+        }
+        for index, (name, amount, operation, status) in enumerate(
+            (
+                ("Harbor Books", 23.50, "PIX", "POSTED"),
+                ("Synthetic transfer", 40.00, "TRANSFER", "POSTED"),
+                ("Pending debit", 11.00, "", "PENDING"),
+            )
+        )
+    ]
+    card_count = publish_demo(silver, item, DEMO_ACCOUNT, "CREDIT", "spending-demo-v1", rows)
+    return card_count + publish_demo(
+        silver, item, REVIEW_ACCOUNT, "BANK", "spending-demo-review-v1", review_rows
+    )
+
+
+def publish_demo(
+    silver: SilverWarehouse,
+    item: UUID,
+    account: str,
+    account_type: str,
+    name: str,
+    rows: list[dict],
+) -> int:
     manifest = silver.lake.commit(
-        run_id=uuid5(NAMESPACE_URL, "finance:spending-demo-v1"),
+        run_id=uuid5(NAMESPACE_URL, f"finance:{name}"),
         retrieved_at=datetime(2026, 11, 17, tzinfo=UTC),
         item_alias=f"item-{item.hex}",
         capture_kind="full",
@@ -62,9 +96,13 @@ def load_demo(silver: SilverWarehouse) -> int:
                 ),
             ),
             CapturePage(
-                "accounts", json_bytes({"results": [{"id": DEMO_ACCOUNT, "type": "CREDIT"}]})
+                "accounts", json_bytes({"results": [{"id": account, "type": account_type}]})
             ),
-            CapturePage("transactions", json_bytes({"results": rows, "next": None}), account),
+            CapturePage(
+                "transactions",
+                json_bytes({"results": rows, "next": None}),
+                entity_key(item, "accounts", account),
+            ),
         ],
     )
     return silver.replay(manifest.run_id)

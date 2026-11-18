@@ -17,7 +17,9 @@ use the same saved rules and transaction currency.
 - Count posted debit transactions with card-account, card metadata, or recognized
   spending-category evidence. Subtract posted credits with explicit refund evidence.
 - Exclude recognized transfers, card payments, cashback and pending transactions.
-  Ambiguous debits and credits stay in the imported history for later reconciliation.
+  Posted debits with ambiguous evidence appear in **Debit review**. A payment-method
+  label such as PIX alone leaves the debit for review. Ambiguous credits stay in
+  the imported history. [Pluggy transaction fields](https://docs.pluggy.ai/en/reference/transaction/transactions-retrieve)
 - Resolve the latest transaction before grouping. Keep one connection selected.
   A reconnect can retain overlapping history under a separate connection.
 - Group totals by currency before reporting. The table displays up to 100 recent
@@ -28,12 +30,25 @@ keywords to a short list. The local operator can override these suggestions.
 Rule matching uses a fingerprint of normalized
 merchant text, with an individual transaction fallback for records lacking a
 usable label. The dashboard shows only structured merchant names when available.
-Raw provider descriptions remain in private Bronze. [Pluggy transaction fields](https://docs.pluggy.ai/en/reference/transaction/transactions-retrieve)
+Raw provider descriptions remain in private Bronze.
+
+## Review a debit
+
+Find **Debit review** directly below the monthly totals. Choose **Include as
+expense** to add one debit to the monthly total. Set its
+category afterwards in **Recent expenses**. **Exclude** leaves it out of totals
+and records the decision. **Reset** returns to the automatic result. The review
+table shows up to 100 debits, with unreviewed ones first.
+
+Review decisions apply to a single transaction within a connection. They survive
+Bronze replay and cannot reinstate a deleted or pending transaction or a recognized
+transfer. The synthetic Harbor Books debit adds BRL 23.50 when included.
 
 ## Existing imported data
 
-Startup provisions the local dashboard credential and applies migration 0005.
-Replay previously imported provider runs to populate the new spending evidence.
+Startup provisions the local dashboard credential and applies the spending and
+review migrations. Replay previously imported provider runs to populate the new
+review evidence.
 Use the regular offline rebuild command to replay every committed capture.
 
 ```powershell
@@ -41,23 +56,25 @@ uv run --frozen finance rebuild-warehouse --from-bronze
 ```
 
 The ClickHouse dashboard user can select the spending projection and insert rule
-events. Its file-backed password is available to the API only. Category updates
-require a local browser origin. Before using personal data, verify an independent
-backup of Bronze and `core.spending_rules`. The existing foundation backup covers
+and review events. Its file-backed password is available to the API only. Category
+and review updates require a local browser origin. Before using personal data,
+verify an independent backup of Bronze, `core.spending_rules`, and
+`core.spending_reviews`. The existing foundation backup covers
 the synthetic probe table.
 
 To inspect the ClickHouse model from the local operator shell, compare the
-spending projection with `core.bank_transaction_current`. The spending view picks
+spending projection `analytics.spending_dashboard` with `core.bank_transaction_current`.
+The spending dashboard view picks
 one transaction version before applying settlement filters, review rules and
 currency totals. This preserves stable aggregates while ClickHouse merges table
 parts in the background.
 
 ## Validation
 
-82 Python tests passed, including the synthetic ClickHouse tests for monthly
-totals, correction propagation and replay. Ruff and the frontend lint, tests and
-build passed. A disposable Docker stack verified that the dashboard account
-can read the spending view while access to the source rows and rule history is
-denied. A hostile Host header was rejected, and a synthetic rule survived a
-container restart. Headless Chrome rendered the demo total. Live-data validation
-and independent backup recovery remain pending.
+83 Python tests passed, including the synthetic ClickHouse tests for monthly
+totals, correction propagation, cross-connection review rejection and replay.
+Ruff and the frontend lint, tests and build passed. A disposable Docker stack
+verified review and reset through the dashboard API and denied the service
+account access to raw transaction rows and review history. Headless Chrome
+rendered the Portuguese review panel. Live-data validation and independent
+backup recovery remain pending.
