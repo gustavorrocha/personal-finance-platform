@@ -1,7 +1,7 @@
 # Bronze and synthetic replay contracts
 
-Only invented API responses are supported in Phase 1. There is no provider client,
-real consent state, banking credential, payment operation or financial model.
+This document describes the v1 synthetic contracts. Provider capture and typed Silver
+contracts are described in the [provider ingestion runbook](provider-ingestion.md).
 
 ## Files and identity
 
@@ -85,5 +85,5 @@ Migration 0003 preserves those rows under a compatibility build and introduces
 generation publication without rewriting an applied migration. New consumers use
 the `published` view above. Old experimental staging tables are not a data source.
 
-No automatic erasure is implemented. Retention must cover live references,
-quarantine evidence, prior generations and backups before deletion can be enabled.
+Automatic storage erasure depends on a retention policy covering live references,
+quarantine evidence, prior generations and backups.
