@@ -47,6 +47,8 @@ if (-not (Test-Path -LiteralPath $keyPath)) {
 $random.Dispose()
 $sha.Dispose()
 [IO.File]::WriteAllText((Join-Path $script:RepoRoot '.env'), "FINANCE_PRIVATE_DIR=$($PrivateDir.Replace('\', '/'))`n", $utf8)
+Import-LocalConfig
+Invoke-Checked uv @('run', '--frozen', 'python', '-m', 'scripts.configure_dashboard')
 Push-Location apps/web
 try { Invoke-Checked npm.cmd @('ci', '--ignore-scripts') } finally { Pop-Location }
 Write-Output 'Bootstrap complete. Synthetic data only; no bank credentials required.'

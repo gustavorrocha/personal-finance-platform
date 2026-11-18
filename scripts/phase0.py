@@ -228,6 +228,11 @@ def verify() -> None:
                 raise ValueError("Health check failed")
         if client.get("http://127.0.0.1:8080/").status_code != 200:
             raise ValueError("Web check failed")
+        untrusted = client.get(
+            "http://127.0.0.1:8080/api/spending", headers={"Host": "external.example"}
+        )
+        if untrusted.status_code != 421:
+            raise ValueError("Dashboard accepted an untrusted hostname")
     logs = command(COMPOSE + ["logs", "--no-color"]).decode(errors="replace")
     if secret in logs:
         raise ValueError("Synthetic secret was found in logs")
