@@ -24,10 +24,8 @@ MERCHANT_WORDS = {
     "pharmacy": "Health",
     "farmácia": "Health",
 }
+PAYMENT_RAILS = {"PIX", "TED", "DOC"}
 NON_SPENDING = {
-    "PIX",
-    "TED",
-    "DOC",
     "TRANSFER",
     "PAGAMENTO",
     "PAGAMENTO_FATURA",
@@ -66,12 +64,11 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
     if not excluded:
         if direction == "CREDIT" and operation in REFUNDS:
             kind = "refund"
-        elif (
-            direction == "DEBIT"
-            and operation not in REFUNDS
-            and (hint or card_account or isinstance(record.get("creditCardMetadata"), dict))
-        ):
-            kind = "purchase"
+        elif direction == "DEBIT" and operation not in REFUNDS:
+            has_evidence = operation not in PAYMENT_RAILS and (
+                hint or card_account or isinstance(record.get("creditCardMetadata"), dict)
+            )
+            kind = "purchase" if has_evidence else "review"
     return {
         "spending_kind": kind,
         "spending_category": hint,
