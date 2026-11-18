@@ -1,7 +1,5 @@
-# Plano de implementação
+# Implementation plan
 
-O plano integral e vinculante é [plano_financas_datalake_clickhouse.md](plano_financas_datalake_clickhouse.md),
-versão 2.0, de 17/11/2026. Este arquivo resolve o nome citado no prompt sem duplicar a especificação.
+The [full implementation plan](plano_financas_datalake_clickhouse.md) records the original version 2.0 specification from November 17, 2026.
 
-Nesta entrega somente a **Fase 0** está em implementação/avaliação.
-Não iniciar a Fase 1 antes de avaliação explícita dos critérios de aceite.
+Phase 0 and its CI fix are merged. The Phase 1 Bronze implementation is recorded on `feat/bronze-storage`. The next planned phase is the read-only provider coverage audit.

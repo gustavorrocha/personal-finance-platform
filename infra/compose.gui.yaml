@@ -1,0 +1,33 @@
+services:
+  clickhouse:
+    secrets:
+      - source: finance_reader
+        target: /etc/clickhouse-server/users.d/finance-reader.xml
+
+  clickhouse-gui:
+    image: nginxinc/nginx-unprivileged:1.28.0-alpine
+    user: '101:101'
+    entrypoint: [nginx, -g, 'daemon off;']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    pids_limit: 32
+    mem_limit: 64m
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=16m']
+    networks: [gui, data]
+    ports: ['127.0.0.1:8123:8080']
+    volumes:
+      - ./clickhouse/gui.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      clickhouse: {condition: service_healthy}
+
+networks:
+  gui:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: '127.0.0.1'
+      com.docker.network.bridge.enable_ip_masquerade: 'false'
+
+secrets:
+  finance_reader:
+    file: ${FINANCE_PRIVATE_DIR:?Run bootstrap.ps1}/secrets/finance-reader.xml

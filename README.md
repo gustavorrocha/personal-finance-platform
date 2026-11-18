@@ -1,16 +1,14 @@
-# Finanças pessoais — Fase 0
+# Personal Finance Platform
 
-Monorepo local para avaliação da infraestrutura, exclusivamente com dados sintéticos.
-ClickHouse é o único SGBD. Não há conexão com bancos ou Pluggy, ingestão, classificação,
-modelo LLM, dashboards financeiros ou persistência Bronze nesta entrega.
+This local workspace uses ClickHouse as its only database. Phase 1 adds immutable Bronze
+captures, manifests, quarantine, and offline replay. The current workflow uses synthetic
+fixtures. Provider access and financial models belong to later phases.
 
-## Executar no Windows
+## Run on Windows
 
-Pré-requisitos: PowerShell 5.1+, Python 3.12, uv 0.11.6, Node 24, npm 11.17.0,
-Docker Desktop com engine Linux acessível e Compose v2+.
-Disponibilize pelo menos 6 GB para o Docker. Não execute em um shell elevado.
-
-Na raiz do repositório:
+Use PowerShell 5.1+, Python 3.12, uv 0.11.6, Node 24, npm 11.17.0, and Docker Desktop
+with the Linux engine and Compose v2+. Allocate at least 6 GB to Docker and run from a
+regular PowerShell session at the repository root.
 
 ```powershell
 .\scripts\bootstrap.ps1
@@ -20,75 +18,84 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 Start-Process http://127.0.0.1:8080
 ```
 
-O bootstrap usa `%LOCALAPPDATA%\PersonalFinancePhase0`, fora do repositório e do OneDrive,
-com ACL para o usuário atual e SYSTEM. Pode-se informar `-PrivateDir C:\finance-phase0`.
-Uma pasta preexistente sem marcador é recusada. `.env` guarda somente o caminho;
-segredos aleatórios são arquivos externos e não são exibidos. Não forneça credenciais bancárias.
-Installations download packages and images. Database/AI use internal networks; the publishing
-frontend uses a private bridge with loopback bindings and outbound masquerading disabled.
-On Docker Desktop this setting does not block frontend egress; see the measured limitations
-in `docs/phase-0-results.md`.
+Bootstrap defaults to `%LOCALAPPDATA%\PersonalFinancePhase0` and grants access to the
+current user and SYSTEM. To choose another location, pass `-PrivateDir C:\finance-phase0`.
+Use private local storage outside Git and cloud sync. Bootstrap refuses preexisting
+directories without its ownership marker. The local `.env` stores the path, and generated
+secrets live in separate private files.
 
-`run_local.ps1` inicia ClickHouse/Ollama, aplica a migração por checksum, depois sobe API/web.
-`/health` retorna `{"status":"ok","phase":0}` apenas após consultar o registro de migração
-com usuário de leitura restrito. A indisponibilidade retorna 503 sem detalhes internos.
-OpenAPI: `http://127.0.0.1:8000/openapi.json`. Não há endpoints de escrita.
+The startup script starts ClickHouse and Ollama, applies checksum-tracked migrations,
+and starts the API and frontend. The API reports foundation health at
+`http://127.0.0.1:8000/health` and serves its schema at `/openapi.json`.
+The frontend serves a localhost status page. ClickHouse and Ollama use internal networks.
+See the [foundation validation report](docs/phase-0-results.md) for the measured Docker
+Desktop frontend egress behavior.
+
+## Validate and replay Bronze
+
+With the stack running, execute the acceptance script and inspect the fixture capture.
+
+```powershell
+.\scripts\validate_bronze.ps1
+uv run --frozen finance lake list
+uv run --frozen finance lake verify
+uv run --frozen finance lake ingest-synthetic --fixtures tests/fixtures/synthetic
+uv run --frozen finance replay --run-id 11111111-1111-4111-8111-111111111111
+uv run --frozen finance rebuild-warehouse --from-bronze
+```
+
+The validation script loads `FINANCE_PRIVATE_DIR` into the current shell. The CLI uses
+that directory's `lake` child. To select a different private path, put
+`--root <absolute-private-path>` before the subcommand.
+
+The fixtures produce one run, two compressed response objects, and three replay records.
+Retry the same capture with the same UUID, timestamp, and bytes. Assign a new UUID for a
+new observation. Filesystem listing and verification run offline. Capture registration,
+warehouse replay, and rebuild use Docker exec against local ClickHouse.
+
+Read current state through `metadata.bronze_objects_current` and
+`metadata.synthetic_bronze_records_published`. Run warehouse writers serially. Rebuild
+publishes a complete generation after validation and leaves prior generations available
+on disk. The acceptance script also rebuilds into an independent temporary ClickHouse
+instance and checks that corruption cannot replace published rows.
+
+See [Phase 1 results](docs/phase-1-results.md), [data contracts](docs/data-contracts.md),
+and [the publication decision](docs/adr/ADR-014-bronze-replay-publication.md).
+
+## Foundation checks and shutdown
+
+For a local database GUI, run `scripts/clickhouse_gui.ps1` and connect over HTTP to
+`127.0.0.1:8123` with user `finance_reader`, database `metadata`, and the password
+in `secrets/finance-reader.password` under the private storage directory.
+See the [GUI runbook](docs/operations-runbook.md#optional-clickhouse-gui) to disable access.
 
 ```powershell
 .\scripts\load_synthetic.ps1
-.\scripts\load_synthetic.ps1  # idempotência da fixture
+.\scripts\verify_security.ps1
 .\scripts\backup.ps1
 .\scripts\restore_test.ps1
-.\scripts\verify_security.ps1
 docker compose --env-file .env -f infra/compose.yaml down
 ```
 
-O backup cobre **somente `metadata.synthetic_events`**: formato Native do ClickHouse,
-manifesto com hashes/contagem, envelope AES-256-GCM. O teste restaura em container independente
-com dados em tmpfs e compara as linhas ordenadas. Não altera nem apaga a base original.
-Arquivos `.aesgcm` ficam na pasta privada `backups`; a chave está em `keys/backup.key`.
-Este mecanismo não é backup de produção e não cobre o futuro Lake/eventos de usuário.
+The foundation backup seals the `metadata.synthetic_events` probe table in an AES-256-GCM
+envelope. Backup files are in the private `backups` directory and the key is in
+`keys/backup.key`. The restore check uses an independent container and compares ordered rows.
+The Lake needs an independent backup before real-data use.
 
-## Estrutura e comandos
-
-| Caminho | Responsabilidade |
+| Path | Responsibility |
 |---|---|
-| `apps/api` | Pacote FastAPI, `/health`, logs por allowlist |
-| `apps/web` | React/TypeScript, status acessível, build estático com esbuild |
-| `packages/lake` | Contrato `ObjectStore` e `LocalObjectStore` abstrato |
-| `packages/*/README.md` | Fronteiras reservadas das próximas fases |
-| `infra` | Compose, configuração ClickHouse e migrações SQL |
-| `scripts` | Operação PowerShell e verificações sintéticas |
-| `tests` | Segurança, infraestrutura, criptografia e contratos |
-| `.github/workflows/ci.yml` | Checks e stack sintética em runner descartável |
+| `apps/api`, `apps/web` | FastAPI health endpoint and static React frontend |
+| `packages/lake` | ObjectStore, local backend, manifests, and file replay |
+| `packages/ingestion` | Local CLI and ClickHouse indexing and replay |
+| `infra`, `scripts` | Compose, SQL migrations, and operator commands |
+| `tests`, `.github/workflows/ci.yml` | Synthetic tests and CI |
 
-```powershell
-uv sync --frozen
-uv run --frozen ruff check .
-uv run --frozen ruff format --check .
-uv run --frozen pytest -q
-Push-Location apps/web
-npm.cmd ci --ignore-scripts
-npm.cmd run lint
-npm.cmd test
-npm.cmd run build
-npm.cmd audit --audit-level=high
-Pop-Location
-```
+Dependency versions are locked in `uv.lock` and `apps/web/package-lock.json`.
+Use `scripts/check.ps1` for lint, tests, the frontend build, and its dependency audit.
+Start the container API through Compose. For a manual Uvicorn run on the host, bind
+it to `127.0.0.1`.
 
-As dependências efetivas estão em `uv.lock` e `apps/web/package-lock.json`.
-Não executar scripts de instalação de dependências npm. O frontend só acessa `/health`
-na própria origem, sem CDN, fontes ou telemetria externas. A publicação é via Nginx no Compose.
-`python -m finance_api` é um entrypoint **de container**; fora dele use Uvicorn com
-`--host 127.0.0.1`, nunca o entrypoint que escuta na interface interna Docker.
-
-## Aceite
-
-Leia [resultados e pendências](docs/phase-0-results.md), [arquitetura](docs/architecture.md),
-[ameaças](docs/threat-model.md), [operação](docs/operations-runbook.md) e [ADRs](docs/adr/README.md).
-O plano completo está em [docs/implementation-plan.md](docs/implementation-plan.md).
-
-Não usar dados reais nesta Fase 0. Docker/ACL não criptografam discos; BitLocker, disco do
-Docker/WSL e cópia de backup em meio separado precisam ser verificados antes de dados reais.
-Implementation stops here for evaluation. Local Docker startup, security checks and synthetic
-backup/restore have passed; remaining manual checks are listed in the validation report.
+See the [implementation plan](docs/implementation-plan.md), [operations runbook](docs/operations-runbook.md),
+[threat model](docs/threat-model.md), and [ADRs](docs/adr/README.md). Phase 1 acceptance uses
+synthetic data. Disk encryption, independent backups, and an approved retention policy
+are operational prerequisites for real data.

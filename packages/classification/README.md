@@ -1,4 +1,3 @@
-# classification
+# Classification
 
-Fronteira reservada para a Fase 4 e 6: Regras e eventos humanos; sugestões LLM apenas posteriormente.
-Sem implementação, dependências ou serviço em execução na Fase 0.
+Phase 4 introduces rules and manual events. Phase 6 adds LLM suggestions.

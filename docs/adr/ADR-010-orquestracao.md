@@ -1,19 +1,19 @@
-# ADR-010: Sem Airflow ou metastore adicional
+# ADR-010 — Lightweight local orchestration
 
-Data: 17/11/2026. Status: Aceita na Fase 0.
+November 17, 2026. Accepted in Phase 0.
 
-## Contexto
+## Context
 
-Orquestração pesada adiciona dependências e banco auxiliar proibido.
+Heavy orchestration adds dependencies and an extra metastore.
 
-## Decisão
+## Decision
 
-PowerShell e CLI local na V1; agendamento leve somente quando a fase operacional precisar.
+Use PowerShell and a local CLI for V1. Add lightweight scheduling in the operations phase.
 
-## Alternativas
+## Alternatives
 
-Airflow, filas e bancos auxiliares aumentam superfície sem benefício desta fase.
+Airflow, queues, and auxiliary databases add attack surface without a current need.
 
-## Consequências
+## Consequences
 
-Falhas interrompem comandos; não há scheduler ou automação financeira.
+Stop commands on failure. Scheduling and financial automation are outside the current scope.

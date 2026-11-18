@@ -2,7 +2,7 @@
 name = "finance-lake"
 version = "0.0.0"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = ["pydantic>=2.14,<3"]
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]

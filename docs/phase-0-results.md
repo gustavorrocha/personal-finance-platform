@@ -41,75 +41,27 @@ Stop here for evaluation of the Phase 0 acceptance criteria.
 
 Suggested follow-up commit: `fix: restore localhost publishing while isolating database and AI services`.
 
-## Historical verification snapshots
+## Initial verification
 
-Data da verificação: 17/11/2026. **Implementação entregue para avaliação; aceite operacional
-Docker ainda pendente. Não avançar para a Fase 1.**
+The original workspace contained the implementation plan. The repository was initialized locally. The first commit attempt hit a permission error at `.git/index.lock` and left the files in the workspace. Later commits and the foundation CI fix were published separately.
 
-O plano integral foi lido em `docs/plano_financas_datalake_clickhouse.md`, único arquivo
-original deste workspace. `docs/implementation-plan.md` agora referencia esse plano.
-O repositório Git foi inicializado localmente; nenhum remoto ou publicação foi criado.
-O commit foi tentado e recusado por permissão em `.git/index.lock`; os arquivos permanecem
-no workspace sem commit. Não houve solicitação de elevação nem alteração das permissões.
-
-## Verificações executadas
-
-| Check | Resultado observado |
+| Check | Initial result |
 |---|---|
-| `uv lock` e `uv sync --frozen` | Passaram; workspace API/Lake instalado |
-| `uv run --frozen pytest -q` | 17 testes passaram, nenhum ignorado |
-| `uv run --frozen ruff check .` | Passou |
-| `uv run --frozen ruff format --check .` | Passou |
-| `npm ci --ignore-scripts` | Passou com lockfile |
-| `npm run lint` | TypeScript estrito + Prettier passaram |
-| `npm test` | 3 testes passaram, nenhum ignorado |
-| `npm run build` | Build React estático passou |
-| `npm audit --audit-level=high` | Zero vulnerabilidades na árvore final |
-| `pip-audit --disable-pip --no-deps -r <export uv>` | Nenhuma vulnerabilidade conhecida |
-| `docker compose -f infra/compose.yaml config --quiet` | Passou com caminho sintético por variável de ambiente |
-| Parser PowerShell em todos os `.ps1` | Nenhum erro sintático |
-| Contratos e controles estáticos | Redes internas, loopback, non-root, limites, ACL prevista, secrets em arquivos, logs restritos |
-| Criptografia em processo | Roundtrip, adulteração e chave incorreta testados |
+| `uv lock` and `uv sync --frozen` | API and Lake workspace installed |
+| `uv run --frozen pytest -q` | 17 passed, none skipped after the mount fix |
+| Ruff lint and format | Passed |
+| `npm ci --ignore-scripts` | Passed with the lockfile |
+| Frontend lint and tests | TypeScript and Prettier passed, plus three tests |
+| Frontend build and npm audit | Build passed, final audit reported zero vulnerabilities |
+| pip-audit against the uv export | No known vulnerabilities reported |
+| Compose validation and PowerShell parsing | Passed |
+| Static security and encryption checks | Loopback, internal networks, non-root, resource limits, file secrets, round trip, tampering, and wrong-key checks passed |
 
-Versões executadas: Python 3.12.8, uv 0.11.6, Node 24.19.0, npm 11.17.0,
-Ruff 0.17.5, Pytest 9.2.0, FastAPI 0.163.2, httpx 0.28.1,
-cryptography 50.0.2, esbuild 0.28.2. Versões transitivas exatas nos lockfiles.
+Tested versions included Python 3.12.8, uv 0.11.6, Node 24.19.0, npm 11.17.0, Ruff 0.17.5, Pytest 9.2.0, FastAPI 0.163.2, httpx 0.28.1, cryptography 50.0.2, and esbuild 0.28.2. Lockfiles identify exact transitive releases. Starlette TestClient reported an httpx deprecation. pip-audit flagged an export without hashes with `--no-deps`. The audited list came from the frozen uv resolution and enumerated transitive packages. The `pluggy` entry in uv.lock belongs to Pytest. Sandbox npm commands run together initially hit `spawn EPERM`. Separate test and build runs passed.
 
-O Pytest emitiu um aviso de depreciação de Starlette TestClient com httpx.
-Os testes continuam passando; avaliar migração do transporte de teste em atualização futura,
-sem ocultar o aviso. pip-audit alerta sobre export sem hashes/`--no-deps`; a resolução foi
-congelada via uv.lock e o arquivo auditado enumera as dependências transitivas.
-`pluggy` no uv.lock é infraestrutura do Pytest, não SDK ou integração bancária.
-Execuções npm agrupadas no sandbox encontraram `spawn EPERM`; os comandos individuais
-`npm.cmd test` e `npm run build` foram executados depois e passaram na árvore final.
+The initial npm audit flagged transitive ReDoS in picomatch without a published fix in the checked version. The build moved from Vite to esbuild. Final versions also resolved the esbuild and cryptography advisories without a forced npm audit fix.
 
-A auditoria inicial detectou ReDoS transitivo em picomatch. A versão consultada não tinha
-correção publicada; remover o Vite eliminou a dependência, substituindo-o por build esbuild.
-A versão final também corrige os avisos encontrados em esbuild e cryptography.
-Não foi aplicado `npm audit fix --force`.
-
-## Critérios de aceite que exigem Docker
-
-`docker version` retornou **permission denied** no pipe `dockerDesktopLinuxEngine`.
-Nenhum container foi iniciado neste ambiente. Validação de Compose não demonstra isolamento
-real nem executa SQL, e testes com dependência substituída não provam saúde do ClickHouse.
-
-| Critério do plano | Implementado | Evidência ainda necessária |
-|---|---|---|
-| `run_local.ps1` sobe stack e `/health` passa | Sim | Executar em Docker Desktop acessível |
-| Segredo falso ausente dos logs | Testes unitários passaram + probe runtime pronta | Executar `verify_security.ps1` na stack |
-| ClickHouse/Ollama inacessíveis externamente | Compose sem ports e redes internas testado | Port scan/inspect runtime e conferência LAN/IPv6/firewall |
-| Backup/restore sintético | AES-GCM testado; export/restore Native implementado | Executar `load_synthetic.ps1` e `restore_test.ps1` |
-| Nenhuma base extra | Configuração e dependências revisadas | Inspecionar stack em execução |
-| Volumes protegidos | Bootstrap com ACL e validação de caminhos | Executar bootstrap, conferir ACL e BitLocker/WSL |
-| CI sintética | Workflow pronto | Executar no GitHub após revisão/publicação autorizada |
-
-Também pendentes: download/build das imagens pinadas, validação de permissões Linux dos
-volumes/secret mounts, teste visual em navegador e revisão de digests/vulnerabilidades de imagens.
-Nenhuma imagem foi tratada como validada só por possuir tag. PowerShell foi analisado,
-mas bootstrap/operação completa não foram executados fora do workspace restrito.
-
-## Sequência para avaliação
+The initial Docker engine connection returned permission denied on `dockerDesktopLinuxEngine`. Runtime validation awaited operator bootstrap and engine access. Static Compose checks and mocked API tests established configuration and behavior separately from live SQL and networking. The runtime results above supersede that initial blocker.
 
 ```powershell
 .\scripts\bootstrap.ps1
@@ -121,14 +73,7 @@ mas bootstrap/operação completa não foram executados fora do workspace restri
 .\scripts\restore_test.ps1
 ```
 
-O verificador exige exatamente 2 eventos, total Decimal 10.00, saúde em ambas as origens,
-ausência de publicação sensível, redes internas e egress bloqueado no namespace Ollama.
-O restore usa outra instância ClickHouse em tmpfs e não modifica a base de origem.
-Não há backup completo de produção, Lake, replay Bronze, provedor, modelo ou cálculos
-financeiros implementados. São escopos posteriores, e não pendências para ampliar esta fase.
-
-Risco de uso: laboratório sintético, sem autenticação de produto e sem comprovação operacional
-Docker nesta sessão. Nenhum dado real deve ser introduzido antes de avaliação e fases adequadas.
+The verifier expects two events totaling Decimal 10.00, healthy localhost endpoints, no sensitive host bindings, and blocked external AI connections. The restore uses a separate tmpfs instance. Foundation work covers synthetic data and the original probe, with real data, full production backups, and financial models scheduled separately.
 
 ## Follow-up: Docker tmpfs mount parsing
 

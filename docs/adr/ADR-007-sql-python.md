@@ -1,19 +1,19 @@
-# ADR-007: SQL analítico e Python financeiro
+# ADR-007 — Analytical SQL and financial Python
 
-Data: 17/11/2026. Status: Direção aceita; execução nas Fases 4 e 8.
+November 17, 2026. Accepted for Phases 4 and 8.
 
-## Contexto
+## Context
 
-Modelagem dimensional e cálculo financeiro têm exigências distintas.
+Dimensional modeling and financial calculations have different requirements.
 
-## Decisão
+## Decision
 
-dbt-clickhouse para SQL; Python determinístico/Decimal para métricas complexas.
+Use dbt-clickhouse for modeling and deterministic Python with Decimal for complex metrics.
 
-## Alternativas
+## Alternatives
 
-Concentrar fórmulas financeiras em SQL dificultaria testes e tratamento de incompletude.
+Putting all calculations in SQL would complicate testing and missing-data handling.
 
-## Consequências
+## Consequences
 
-Não instalar dbt, cliente warehouse ou bibliotecas financeiras sem uso nesta fase.
+Install dbt, warehouse clients, and financial libraries when the relevant phase uses them.

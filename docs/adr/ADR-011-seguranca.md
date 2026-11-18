@@ -1,26 +1,19 @@
-# ADR-011: Rede fechada e armazenamento protegido
+# ADR-011 — Closed networks and protected storage
 
-Data: 17/11/2026. Status: Aceita na Fase 0.
+November 17, 2026. Accepted in Phase 0.
 
-## Contexto
+## Context
 
-O repositório pode estar em OneDrive; volumes, logs e segredos não devem acompanhar o código.
+The repository may live in OneDrive. Keep volumes, logs, and credentials in private storage.
 
-## Decisão
+## Decision
 
-Bind somente loopback; banco/IA sem portas; secrets por arquivo externo com ACL; backup sintético AES-GCM.
+Use loopback bindings, unpublished database and AI ports by default, externally mounted secrets with ACLs, and AES-GCM for synthetic backups. The optional GUI bridge forwards localhost HTTP to ClickHouse for a scoped read-only account.
 
-Runtime clarification (17 November 2026): the publishing frontend uses a bridge with outbound
-masquerading disabled and explicit loopback bindings. Internal-only frontend endpoints did
-not produce active host port mappings. Data, AI and recovery remain internal. Docker Desktop
-still permits frontend outbound TCP traffic; no-masquerade is not a firewall. The verifier
-checks database/AI egress blocking and actual active host bindings. Stronger frontend egress
-restrictions require host firewall policy, rather than claiming all networks are air-gapped.
+## Alternatives
 
-## Alternativas
+Docker volumes and localhost alone cannot provide disk encryption or authenticate host processes.
 
-Docker volumes e localhost sozinhos não são criptografia ou autenticação.
+## Consequences
 
-## Consequências
-
-Host é fronteira privilegiada; confirmar BitLocker/WSL, firewall e cópia independente antes de dados reais.
+The host is privileged. Validate BitLocker/WSL, firewall behavior, and independent backup before handling real data. On the tested Docker Desktop host the frontend retained outbound TCP access despite disabled masquerading. The verifier checks live loopback mappings and blocked database/AI egress in the default configuration.

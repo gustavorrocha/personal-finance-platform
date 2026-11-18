@@ -1,19 +1,19 @@
-# ADR-003: Bronze externo e warehouse reconstruível
+# ADR-003 — External Bronze and a rebuildable warehouse
 
-Data: 17/11/2026. Status: Aceita como direção; execução na Fase 1.
+November 17, 2026. Accepted and implemented for synthetic Phase 1.
 
-## Contexto
+## Context
 
-É necessário preservar a evidência original sem depender da sobrevivência do warehouse.
+Preserve original evidence independently of the lifetime of the warehouse.
 
-## Decisão
+## Decision
 
-Bronze futuro em arquivos; Silver em core, Gold em analytics. Eventos manuais são estado independente.
+Store Bronze in files, Silver in core, and Gold in analytics. Preserve manual events independently.
 
-## Alternativas
+## Alternatives
 
-Raw canônico no ClickHouse não atende replay externo previsto no plano.
+Canonical raw data solely in ClickHouse would prevent external replay after warehouse loss.
 
-## Consequências
+## Consequences
 
-Não criar Bronze nesta entrega; backup futuro precisa cobrir Lake e eventos não reconstruíveis.
+Future backups must cover the Lake and non-rebuildable events.

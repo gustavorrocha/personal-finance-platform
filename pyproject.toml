@@ -2,24 +2,25 @@
 name = "personal-finance"
 version = "0.0.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["finance-api", "finance-lake"]
+dependencies = ["finance-api", "finance-lake", "finance-ingestion"]
 
 [tool.uv]
 package = false
 
 [tool.uv.workspace]
-members = ["apps/api", "packages/lake"]
+members = ["apps/api", "packages/lake", "packages/ingestion"]
 
 [tool.uv.sources]
 finance-api = { workspace = true }
 finance-lake = { workspace = true }
+finance-ingestion = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8.3,<10", "ruff>=0.11,<1", "pyyaml>=6,<7", "cryptography>=50,<51"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = [".", "apps/api/src", "packages/lake/src"]
+pythonpath = [".", "apps/api/src", "packages/lake/src", "packages/ingestion/src"]
 addopts = "-ra --strict-markers"
 
 [tool.ruff]

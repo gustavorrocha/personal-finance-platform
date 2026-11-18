@@ -1,4 +1,3 @@
-# pluggy_client
+# Pluggy client
 
-Fronteira reservada para a Fase 2: Cliente de provedor somente leitura e auditoria de cobertura.
-Sem implementação, dependências ou serviço em execução na Fase 0.
+Phase 2 introduces a read-only provider client and a coverage audit.

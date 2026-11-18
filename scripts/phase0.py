@@ -85,18 +85,24 @@ def sql(
 
 
 def migrate() -> None:
-    migration = ROOT / "infra/migrations/0001_foundation.sql"
-    content = migration.read_bytes()
-    digest = hashlib.sha256(content).hexdigest()
-    exists = sql("EXISTS TABLE metadata.schema_migrations").strip() == b"1"
-    if exists:
-        previous = sql("SELECT sha256 FROM metadata.schema_migrations WHERE version='0001'")
-        if previous.strip():
-            if previous.strip() != digest.encode():
-                raise ValueError("Applied migration changed; add a new migration instead")
-            return
-    sql(content.decode())
-    sql(f"INSERT INTO metadata.schema_migrations (version,sha256) VALUES ('0001','{digest}')")
+    for migration in sorted((ROOT / "infra/migrations").glob("[0-9][0-9][0-9][0-9]_*.sql")):
+        version = migration.name[:4]
+        content = migration.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        exists = sql("EXISTS TABLE metadata.schema_migrations").strip() == b"1"
+        if exists:
+            previous = sql(
+                f"SELECT sha256 FROM metadata.schema_migrations WHERE version='{version}'"
+            )
+            if previous.strip():
+                if previous.strip() != digest.encode():
+                    raise ValueError("Applied migration changed; add a new migration instead")
+                continue
+        sql(content.decode())
+        sql(
+            "INSERT INTO metadata.schema_migrations (version,sha256) "
+            f"VALUES ('{version}','{digest}')"
+        )
 
 
 def load_synthetic() -> None:
