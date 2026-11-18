@@ -37,6 +37,7 @@ def configure(private: Path) -> None:
         "<quota>default</quota><grants>"
         "<query>GRANT SELECT ON analytics.spending_current</query>"
         "<query>GRANT SELECT ON analytics.spending_dashboard</query>"
+        "<query>GRANT SELECT ON analytics.accounts_dashboard</query>"
         "<query>GRANT INSERT ON core.spending_rules</query>"
         "<query>GRANT INSERT ON core.spending_reviews</query>"
         "</grants></dashboard></users></clickhouse>"
