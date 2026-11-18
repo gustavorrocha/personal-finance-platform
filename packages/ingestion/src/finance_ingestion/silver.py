@@ -11,6 +11,7 @@ from finance_lake.manifest import Manifest, json_bytes
 from finance_pluggy.coverage import identifier
 
 from .collection import entity_key, item_key
+from .spending import spending_fields
 from .warehouse import BronzeWarehouse, Execute
 
 
@@ -57,7 +58,9 @@ def decimal_field(value: object) -> str | None:
     return format(normalized, "f")
 
 
-def normalized_row(manifest: Manifest, item: UUID, entry: ReplayRecord, ordinal: int) -> dict:
+def normalized_row(
+    manifest: Manifest, item: UUID, entry: ReplayRecord, ordinal: int, cards: set[UUID]
+) -> dict:
     record = entry.record
     resource = entry.resource
     deleted = resource == "transaction_deletions"
@@ -128,6 +131,8 @@ def normalized_row(manifest: Manifest, item: UUID, entry: ReplayRecord, ordinal:
         row[column] is None for column in ("amount", "economic_date", "currency")
     ):
         raise ValueError("Incomplete transaction")
+    if resource == "transactions":
+        row.update(spending_fields(record, str(key), card_account=entry.scope_id in cards))
     if resource == "investments":
         row["rate_type"] = text_field(record.get("rateType"))
         row["symbol"] = text_field(record.get("code"))
@@ -188,9 +193,15 @@ class SilverWarehouse:
         if manifest.source != "pluggy":
             raise ValueError("Silver replay requires provider Bronze")
         item = UUID(manifest.item_alias.removeprefix("item-"))
+        entries = list(self.lake.replay(run_id))
+        cards = {
+            entity_key(item, "accounts", identifier(entry.record.get("id")))
+            for entry in entries
+            if entry.resource == "accounts" and entry.record.get("type") == "CREDIT"
+        }
         rows = [
-            normalized_row(manifest, item, entry, ordinal)
-            for ordinal, entry in enumerate(self.lake.replay(run_id))
+            normalized_row(manifest, item, entry, ordinal, cards)
+            for ordinal, entry in enumerate(entries)
         ]
         self.append("core.provider_versions", rows)
         self.append(

@@ -1,5 +1,6 @@
 . "$PSScriptRoot/common.ps1"
 Import-LocalConfig
+Invoke-Checked uv @('run', '--frozen', 'python', '-m', 'scripts.configure_dashboard')
 Invoke-Compose @('up', '-d', '--wait', '--wait-timeout', '180', 'clickhouse', 'ollama')
 Invoke-Checked uv @('run', '--frozen', 'python', 'scripts/phase0.py', 'migrate')
 Invoke-Compose @('up', '-d', '--build', '--wait', '--wait-timeout', '180', 'api', 'web')

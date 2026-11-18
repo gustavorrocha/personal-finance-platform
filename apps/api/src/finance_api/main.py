@@ -3,9 +3,12 @@ from typing import Annotated, Literal
 
 import httpx
 from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+from .spending import router
 
 
 async def check_database() -> bool:
@@ -25,10 +28,16 @@ class Health(BaseModel):
     phase: Literal[0] = 0
 
 
-app = FastAPI(title="Personal Finance — Phase 0", version="0.0.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Personal Finance", version="0.0.0", docs_url=None, redoc_url=None)
 app.add_middleware(
     TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "api", "testserver"]
 )
+app.include_router(router)
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(_request: Request, _error: RequestValidationError):
+    return JSONResponse({"detail": "Invalid request"}, status_code=422)
 
 
 @app.middleware("http")

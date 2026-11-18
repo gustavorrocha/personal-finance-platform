@@ -2,7 +2,23 @@
 
 This local workspace uses ClickHouse as its only database. It supports synthetic
 validation and optional sync of existing Pluggy connections into immutable Bronze
-captures and typed Silver views.
+captures and typed Silver views. The localhost dashboard shows monthly spending and
+lets you correct local merchant categories.
+
+## Try the spending dashboard
+
+After bootstrap, run these commands in the same PowerShell session:
+
+```powershell
+.\scripts\run_local.ps1
+uv run --frozen finance demo-spending
+Start-Process http://127.0.0.1:8080
+```
+
+Select **Synthetic demo** if you have multiple connections. November 2026 shows
+**BRL 257.03** across seven posted entries. Change the category of one West Market
+row to check that all three matching entries update. The demo uses invented data and
+requires no Pluggy credentials. See the [spending runbook](docs/spending.md).
 
 ## Run on Windows
 
@@ -27,7 +43,7 @@ secrets live in separate private files.
 The startup script starts ClickHouse and Ollama, applies checksum-tracked migrations,
 and starts the API and frontend. The API reports foundation health at
 `http://127.0.0.1:8000/health` and serves its schema at `/openapi.json`.
-The frontend serves a localhost status page. ClickHouse and Ollama use internal networks.
+The frontend serves the localhost spending dashboard. ClickHouse and Ollama use internal networks.
 See the [foundation validation report](docs/phase-0-results.md) for the measured Docker
 Desktop frontend egress behavior.
 

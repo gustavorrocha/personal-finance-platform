@@ -25,6 +25,8 @@ services:
     secrets:
       - source: health_user
         target: /etc/clickhouse-server/users.d/health.xml
+      - source: dashboard_user
+        target: /etc/clickhouse-server/users.d/dashboard.xml
     healthcheck:
       test: [CMD, clickhouse-client, --host, 127.0.0.1, --query, SELECT 1]
       interval: 5s
@@ -42,7 +44,7 @@ services:
     networks: [frontend, data]
     ports: ['127.0.0.1:8000:8000']
     mem_limit: 256m
-    secrets: [api_password]
+    secrets: [api_password, dashboard_password]
     depends_on:
       clickhouse: {condition: service_healthy}
     healthcheck:
@@ -121,3 +123,7 @@ secrets:
     file: ${FINANCE_PRIVATE_DIR}/secrets/api_password
   health_user:
     file: ${FINANCE_PRIVATE_DIR}/secrets/health.xml
+  dashboard_user:
+    file: ${FINANCE_PRIVATE_DIR}/secrets/dashboard.xml
+  dashboard_password:
+    file: ${FINANCE_PRIVATE_DIR}/secrets/dashboard_password
