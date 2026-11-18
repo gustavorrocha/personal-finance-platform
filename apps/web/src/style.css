@@ -183,6 +183,12 @@ meter::-moz-meter-bar {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+.suggestion {
+  margin-top: 0.5rem;
+}
+.suggestion p {
+  margin-block: 0.25rem;
+}
 table {
   border-collapse: collapse;
   width: 100%;

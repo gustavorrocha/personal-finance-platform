@@ -60,6 +60,12 @@ function App() {
     "loadError" | "saveError" | "reviewError"
   >();
   const [notice, setNotice] = useState<"saved" | "reviewSaved">();
+  const [suggesting, setSuggesting] = useState(false);
+  const [attempted, setAttempted] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<Record<string, string>>({});
+  const [suggestionStatus, setSuggestionStatus] = useState<
+    "suggestionsReady" | "noSuggestions" | "suggestionsUnavailable"
+  >();
   const copy = messages[locale];
   const number = new Intl.NumberFormat(locale);
   const [activeYear, activeMonth] = (month || data?.month || "").split("-");
@@ -100,6 +106,57 @@ function App() {
       });
     return () => request.abort();
   }, [item, month, revision]);
+
+  useEffect(() => {
+    setAttempted([]);
+    setSuggestions({});
+    setSuggestionStatus(undefined);
+  }, [item, month]);
+
+  const candidates = (data?.expenses ?? [])
+    .filter(
+      (row) =>
+        row.category === "Uncategorized" &&
+        row.merchant &&
+        !attempted.includes(row.id),
+    )
+    .slice(0, 4);
+  const hasProposals = data?.expenses.some(
+    (row) => row.category === "Uncategorized" && suggestions[row.id],
+  );
+
+  async function requestSuggestions() {
+    if (!data?.selected || !candidates.length) return;
+    const transactions = candidates.map((row) => row.id);
+    setSuggesting(true);
+    setSuggestionStatus(undefined);
+    try {
+      const response = await fetch("/api/spending/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item: data.selected.id, transactions }),
+        signal: AbortSignal.timeout(65000),
+      });
+      if (!response.ok) throw new Error();
+      const result = (await response.json()) as {
+        suggestions: { id: string; category: string }[];
+      };
+      setSuggestions((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          result.suggestions.map(({ id, category }) => [id, category]),
+        ),
+      }));
+      setAttempted((current) => [...current, ...transactions]);
+      setSuggestionStatus(
+        result.suggestions.length ? "suggestionsReady" : "noSuggestions",
+      );
+    } catch {
+      setSuggestionStatus("suggestionsUnavailable");
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   async function save(
     path: "rules" | "reviews",
@@ -178,7 +235,7 @@ function App() {
                   setMonth("");
                   setNotice(undefined);
                 }}
-                disabled={saving || !data?.connections.length}
+                disabled={saving || suggesting || !data?.connections.length}
               >
                 <option value="">{copy.selectConnection}</option>
                 {data?.connections.map((connection, index) => (
@@ -194,7 +251,13 @@ function App() {
               {copy.month}
               <select
                 value={activeMonth || ""}
-                disabled={saving || loading || !data?.selected || !activeYear}
+                disabled={
+                  saving ||
+                  suggesting ||
+                  loading ||
+                  !data?.selected ||
+                  !activeYear
+                }
                 onChange={(event) =>
                   setMonth(`${activeYear}-${event.target.value}`)
                 }
@@ -211,7 +274,13 @@ function App() {
               {copy.year}
               <select
                 value={activeYear}
-                disabled={saving || loading || !data?.selected || !activeMonth}
+                disabled={
+                  saving ||
+                  suggesting ||
+                  loading ||
+                  !data?.selected ||
+                  !activeMonth
+                }
                 onChange={(event) =>
                   setMonth(`${event.target.value}-${activeMonth}`)
                 }
@@ -400,6 +469,19 @@ function App() {
             <section className="panel" aria-labelledby="expenses">
               <h2 id="expenses">{copy.recentExpenses}</h2>
               <p>{copy.matchingExpenses}</p>
+              {(candidates.length > 0 || suggesting) && (
+                <button
+                  type="button"
+                  disabled={saving || suggesting}
+                  onClick={() => void requestSuggestions()}
+                >
+                  {suggesting ? copy.suggesting : copy.suggestCategories}
+                </button>
+              )}
+              {suggestionStatus &&
+                (suggestionStatus !== "suggestionsReady" || hasProposals) && (
+                  <p role="status">{copy[suggestionStatus]}</p>
+                )}
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -428,7 +510,7 @@ function App() {
                               entry.merchant || copy.expense,
                               formatDate(entry.date, locale),
                             )}
-                            disabled={saving || loading}
+                            disabled={saving || suggesting || loading}
                             value={entry.category}
                             onChange={(event) =>
                               void save("rules", entry.id, {
@@ -442,6 +524,40 @@ function App() {
                               </option>
                             ))}
                           </select>
+                          {entry.category === "Uncategorized" &&
+                            suggestions[entry.id] && (
+                              <div className="suggestion">
+                                <p>
+                                  {copy.suggested} ·{" "}
+                                  {categoryLabel(suggestions[entry.id], locale)}
+                                </p>
+                                <div className="review-actions">
+                                  <button
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={() =>
+                                      void save("rules", entry.id, {
+                                        category: suggestions[entry.id],
+                                      })
+                                    }
+                                  >
+                                    {copy.applySuggestion}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={saving}
+                                    onClick={() =>
+                                      setSuggestions((current) => ({
+                                        ...current,
+                                        [entry.id]: "",
+                                      }))
+                                    }
+                                  >
+                                    {copy.dismissSuggestion}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                         </td>
                       </tr>
                     ))}

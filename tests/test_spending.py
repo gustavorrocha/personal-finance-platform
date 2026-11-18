@@ -65,6 +65,11 @@ def test_category_corrections_require_local_origin_and_validate_before_database(
         assert (
             client.post("/api/spending/reviews", headers=external, json=review).status_code == 403
         )
+        oversized = {"item": body["item"], "transactions": [body["transaction"]] * 5}
+        assert (
+            client.post("/api/spending/suggestions", headers=local, json=oversized).status_code
+            == 422
+        )
 
 
 def test_dashboard_describes_demo_without_relying_on_english_labels(monkeypatch):
@@ -97,6 +102,27 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         net = next(row for row in page["totals"] if row["bucket"] is None)
         assert Decimal(net["total"]) == Decimal("257.03")
         assert len(page["expenses"]) == 7
+        eligible = next(row for row in page["expenses"] if row["merchant"] == "Corner Bookshop")
+        classified = next(row for row in page["expenses"] if row["merchant"] == "West Market")
+
+        async def suggest(_client, merchants):
+            assert merchants == ["Corner Bookshop"]
+            return ["Shopping"]
+
+        monkeypatch.setattr(spending.classifier, "suggest", suggest)
+        suggestion_request = {
+            "item": page["selected"]["id"],
+            "transactions": [eligible["id"], classified["id"]],
+        }
+        assert client.post("/api/spending/suggestions", json=suggestion_request).status_code == 403
+        suggested = client.post(
+            "/api/spending/suggestions",
+            headers={"Origin": "http://127.0.0.1:8080"},
+            json=suggestion_request,
+        )
+        assert suggested.status_code == 200
+        assert suggested.json() == {"suggestions": [{"id": eligible["id"], "category": "Shopping"}]}
+        assert client.get("/api/spending").json() == page
         assert [row["merchant"] for row in page["reviews"]] == ["Harbor Books"]
         assert {row["merchant"] for row in page["expenses"]}.isdisjoint(
             {"Museum Studio", "Card statement"}
