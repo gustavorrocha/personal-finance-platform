@@ -87,7 +87,14 @@ class LocalObjectStore(ObjectStore):
             raise ValueError("Invalid object key")
         path = self.root.joinpath(*parts)
         _no_links(path)
-        if not path.resolve().is_relative_to(self.root):
+        resolved = path.resolve()
+        root = self.root
+        if os.name == "nt":
+            # A file created during resolution can switch to the extended-length spelling.
+            extended = "\\\\?\\"
+            resolved = Path(str(resolved).removeprefix(extended))
+            root = Path(str(root).removeprefix(extended))
+        if not resolved.is_relative_to(root):
             raise ValueError("Object escaped storage root")
         return path
 
