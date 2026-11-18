@@ -1,18 +1,21 @@
-"""Private Lake operations and read-only provider coverage audit."""
+"""Private Lake operations, provider sync, and offline replay."""
 
 import argparse
 import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from finance_lake import LocalObjectStore
-from finance_lake.bronze import BronzeLake
+from finance_lake.bronze import BronzeLake, CapturePage
 from finance_pluggy.client import AuditError
-from finance_pluggy.coverage import audit_from_environment
+from finance_pluggy.coverage import audit_from_environment, configured_client, identifier
 
+from .collection import collect, entity_key, item_key
+from .silver import SilverWarehouse
 from .synthetic import capture_synthetic
 from .warehouse import BronzeWarehouse
 
@@ -46,12 +49,80 @@ def docker_sql(query: str, native: bytes = b"") -> bytes:
     return result.stdout
 
 
+def sync(silver: SilverWarehouse, *, full: bool) -> dict:
+    runs = []
+    with configured_client(max_pages=100) as (client, items):
+        for item_id in items:
+            run_id = uuid4()
+            item = item_key(item_id)
+            observed = datetime.now(UTC)
+            manifest = None
+            silver.event(run_id, item, "started")
+            try:
+                checkpoint = None if full else silver.checkpoint(item)
+                manifest = collect(client, silver.lake, item_id, run_id, observed, checkpoint)
+                records = silver.replay(run_id)
+            except (RuntimeError, ValueError, OSError, subprocess.SubprocessError):
+                if manifest is None:
+                    silver.lake.record_collection_failure(run_id, observed)
+                silver.event(
+                    run_id, item, "capture_failed" if manifest is None else "replay_failed"
+                )
+                runs.append({"run_id": str(run_id), "status": "failed"})
+            else:
+                runs.append(
+                    {
+                        "run_id": str(run_id),
+                        "status": manifest.capture_kind,
+                        "records": records,
+                    }
+                )
+    return {"runs": runs}
+
+
+def apply_deletions(silver: SilverWarehouse, raw: bytes, received_at: datetime) -> int:
+    event = json.loads(raw)
+    if not isinstance(event, dict) or event.get("event") != "transactions/deleted":
+        raise ValueError("Expected a reviewed transaction deletion event")
+    item = item_key(identifier(event.get("itemId")))
+    account = entity_key(item, "accounts", identifier(event.get("accountId")))
+    event_id = identifier(event.get("eventId"))
+    ids = event.get("transactionIds")
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 10000:
+        raise ValueError("Invalid deletion identities")
+    if len({identifier(value) for value in ids}) != len(ids):
+        raise ValueError("Duplicate transaction identities")
+    if (
+        received_at.utcoffset() is None
+        or not 1970 <= received_at.year
+        or received_at > datetime.now(UTC)
+    ):
+        raise ValueError("Invalid deletion receipt time")
+    if not silver.knows_account(item, account):
+        raise ValueError("Deletion event account is outside collected scopes")
+    run_id = uuid5(NAMESPACE_URL, f"finance:pluggy:deletion:{event_id}")
+    silver.lake.commit(
+        run_id=run_id,
+        retrieved_at=received_at.astimezone(UTC),
+        item_alias=f"item-{item.hex}",
+        payloads=[CapturePage("transaction_deletions", raw, account)],
+        capture_kind="deletions",
+    )
+    return silver.replay(run_id)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = SafeArgumentParser(prog="finance", description=__doc__)
     parser.add_argument("--root", type=Path, help="Private Lake directory outside Git/cloud sync")
     commands = parser.add_subparsers(dest="command", required=True)
     audit = commands.add_parser("audit-coverage", help="Audit existing Pluggy items")
     audit.add_argument("--redact", action="store_true", help="Redaction is always enabled")
+    sync_parser = commands.add_parser("sync", help="Collect existing provider items")
+    sync_parser.add_argument("--full", action="store_true", help="Read full available history")
+    deletions = commands.add_parser(
+        "apply-deletions", help="Read a reviewed provider event on stdin"
+    )
+    deletions.add_argument("--received-at", type=datetime.fromisoformat, required=True)
     lake_parser = commands.add_parser("lake")
     lake_commands = lake_parser.add_subparsers(dest="operation", required=True)
     lake_commands.add_parser("init")
@@ -81,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
             root = Path(private) / "lake"
         lake = BronzeLake(LocalObjectStore(root))
         warehouse = BronzeWarehouse(lake, docker_sql)
+        silver = SilverWarehouse(warehouse, docker_sql)
+        exit_code = 0
         if args.command == "lake":
             match args.operation:
                 case "init":
@@ -104,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
                         runs.append(
                             {
                                 "run_id": str(manifest.run_id),
+                                "source": manifest.source,
                                 "objects": len(manifest.objects),
                                 "integrity": "verified"
                                 if args.operation == "verify"
@@ -115,9 +189,28 @@ def main(argv: list[str] | None = None) -> int:
                         )
                     summary = {"runs": runs}
         elif args.command == "replay":
-            summary = {"status": "complete", "records": warehouse.replay(args.run_id)}
+            target = (
+                silver if warehouse.read_manifest(args.run_id).source == "pluggy" else warehouse
+            )
+            summary = {"status": "complete", "records": target.replay(args.run_id)}
+        elif args.command == "sync":
+            summary = sync(silver, full=args.full)
+            exit_code = int(any(run["status"] in ("failed", "partial") for run in summary["runs"]))
+        elif args.command == "apply-deletions":
+            raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+            if len(raw) > 1024 * 1024:
+                raise ValueError("Deletion event exceeds the input limit")
+            summary = {
+                "status": "complete",
+                "records": apply_deletions(silver, raw, args.received_at),
+            }
         else:
-            summary = {"status": "complete", "records": warehouse.rebuild()}
+            manifests = [warehouse.read_manifest(run_id) for run_id in lake.list_runs()]
+            if not manifests:
+                raise FileNotFoundError("Rebuild requires at least one committed capture")
+            count = warehouse.rebuild() if any(m.source == "synthetic" for m in manifests) else 0
+            count += sum(silver.replay(m.run_id) for m in manifests if m.source == "pluggy")
+            summary = {"status": "complete", "records": count}
     except Exception:
         print(
             "Finance operation failed; sensitive details suppressed. "
@@ -126,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     print(json.dumps(summary, sort_keys=True))
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
