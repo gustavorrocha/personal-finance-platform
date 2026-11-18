@@ -2,13 +2,14 @@
 name = "finance-ingestion"
 version = "0.0.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["finance-lake"]
+dependencies = ["finance-lake", "finance-pluggy"]
 
 [project.scripts]
 finance = "finance_ingestion.cli:main"
 
 [tool.uv.sources]
 finance-lake = { workspace = true }
+finance-pluggy = { workspace = true }
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]

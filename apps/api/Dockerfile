@@ -7,6 +7,7 @@ COPY pyproject.toml uv.lock ./
 COPY apps/api apps/api
 COPY packages/lake packages/lake
 COPY packages/ingestion packages/ingestion
+COPY packages/pluggy_client packages/pluggy_client
 RUN uv sync --frozen --no-dev --no-editable && chown -R 10001:10001 /app
 USER 10001:10001
 CMD ["/app/.venv/bin/python", "-m", "finance_api"]

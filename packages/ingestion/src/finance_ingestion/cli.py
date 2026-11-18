@@ -1,4 +1,4 @@
-"""Private local operations. No provider URL, API credentials or network client."""
+"""Private Lake operations and read-only provider coverage audit."""
 
 import argparse
 import json
@@ -10,6 +10,8 @@ from uuid import UUID
 
 from finance_lake import LocalObjectStore
 from finance_lake.bronze import BronzeLake
+from finance_pluggy.client import AuditError
+from finance_pluggy.coverage import audit_from_environment
 
 from .synthetic import capture_synthetic
 from .warehouse import BronzeWarehouse
@@ -48,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = SafeArgumentParser(prog="finance", description=__doc__)
     parser.add_argument("--root", type=Path, help="Private Lake directory outside Git/cloud sync")
     commands = parser.add_subparsers(dest="command", required=True)
+    audit = commands.add_parser("audit-coverage", help="Audit existing Pluggy items")
+    audit.add_argument("--redact", action="store_true", help="Redaction is always enabled")
     lake_parser = commands.add_parser("lake")
     lake_commands = lake_parser.add_subparsers(dest="operation", required=True)
     lake_commands.add_parser("init")
@@ -60,6 +64,14 @@ def main(argv: list[str] | None = None) -> int:
     rebuild = commands.add_parser("rebuild-warehouse")
     rebuild.add_argument("--from-bronze", action="store_true", required=True)
     args = parser.parse_args(argv)
+    if args.command == "audit-coverage":
+        try:
+            summary = audit_from_environment(max_pages=100)
+        except AuditError as error:
+            print(str(error), file=sys.stderr)
+            return 1
+        print(json.dumps(summary, sort_keys=True))
+        return 0
     try:
         root = args.root
         if root is None:
