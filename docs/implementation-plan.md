@@ -8,5 +8,6 @@ and [provider ingestion and Silver replay](provider-ingestion.md).
 The [private spending slice](spending.md) combines the expense classification work
 from Phase 4 with the first dashboard from Phase 5. It uses one ClickHouse spending
 view, deterministic classification and a small localhost UI. This slice focuses on
-posted expenses and reviewable corrections. Broader financial modeling, local LLM
+posted expenses, category corrections, and review of ambiguous posted debits.
+Broader financial modeling, local LLM
 suggestions, investments and scheduling stay in the longer-term specification.
