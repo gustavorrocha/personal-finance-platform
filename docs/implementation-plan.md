@@ -5,6 +5,10 @@ The [full implementation plan](plano_financas_datalake_clickhouse.md) records th
 Phases 0–3 are merged, including the [read-only provider coverage audit](provider-coverage.md)
 and [provider ingestion and Silver replay](provider-ingestion.md).
 
+The [holdings dashboard](holdings.md) starts with a read-only account snapshot.
+It builds on the current Silver account observations and keeps connection scopes
+separate for the later dashboard and investment views.
+
 The [private spending slice](spending.md) combines the expense classification work
 from Phase 4 with the first dashboard from Phase 5. It uses one ClickHouse spending
 view, deterministic classification and a small localhost UI. This slice focuses on

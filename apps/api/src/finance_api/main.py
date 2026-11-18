@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .accounts import router as accounts_router
 from .spending import router
 
 
@@ -33,6 +34,7 @@ app.add_middleware(
     TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "api", "testserver"]
 )
 app.include_router(router)
+app.include_router(accounts_router)
 
 
 @app.exception_handler(RequestValidationError)
