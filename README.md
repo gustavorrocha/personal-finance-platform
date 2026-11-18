@@ -22,6 +22,9 @@ the Harbor Books debit to see the total rise to **BRL 280.53**. Reset the
 decision to return to **BRL 257.03**. The demo uses invented data and
 requires no Pluggy credentials. See the [spending runbook](docs/spending.md).
 
+The optional [local category model](docs/local-classification.md) can suggest
+categories for uncategorized expenses. You review each suggestion before applying it.
+
 ## Run on Windows
 
 Use PowerShell 5.1+, Python 3.12, uv 0.11.6, Node 24, npm 11.17.0, and Docker Desktop
