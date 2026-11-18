@@ -2,7 +2,7 @@
 
 **Version:** 2.0 · **Date:** November 17, 2026\
 **Status:** Technical plan and roadmap for a coding agent. Production code execution is outside this plan.\
-**Initial sources:** banks connected through Pluggy/Open Finance.\
+**Initial sources:** Existing connections through Pluggy/Open Finance.\
 **Constraints:** ClickHouse is the only database engine. The platform is local-first, inference for real data runs locally, and V1 has no public endpoints. Bronze is durable, with Silver and Gold in ClickHouse.
 
 ## 0. Executive summary and decisions
@@ -128,7 +128,7 @@ Represent interactive changes as versioned events. Use `FINAL` or deterministic 
 
 ## 5. Pluggy pipeline and coverage audit
 
-Run `finance audit-coverage` before a full load. Inspect items, connectors, states, resources, accounts, cards, investments, movements, bills, and dates. Check savings-pot and full history availability. Report redacted counts and available-field percentages without balances or sensitive descriptions.
+Run `finance audit-coverage` before a full load. Inspect items, connectors, states, resources, accounts, cards, investments, movements, bills, and dates. Check savings-pot and historical data availability per item. Report redacted counts and available-field percentages without balances or sensitive descriptions.
 
 Use `GET /v2/transactions` and preserve the returned opaque `next` query string until it is null. Use endpoint-specific page/pageSize/totalPages pagination for investments, movements, bills, and other applicable endpoints. Reconnected items may change IDs. Use provider identifiers and manual review for ambiguous matches. Recheck recent pending-to-posted transitions, reversals, and deletions. Remote webhooks are outside the MVP. Enforce limits, 429/5xx backoff, timeouts, simple circuit breaking, page counts, and failure manifests.
 
@@ -192,7 +192,7 @@ Indicative CLI commands:
 finance doctor
 finance audit-coverage --redact
 finance sync --resource all
-finance sync --resource transactions --item-alias bank-1
+finance sync --resource transactions --item-alias item-1
 finance lake verify
 finance lake list --run-id <run_id>
 finance replay --run-id <run_id>
