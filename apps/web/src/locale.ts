@@ -51,6 +51,15 @@ export const messages = {
     merchant: "Merchant",
     amount: "Amount",
     category: "Category",
+    suggestCategories: "Suggest categories",
+    suggesting: "Generating local suggestions…",
+    suggestionsReady: "Review the suggestions below before applying them.",
+    noSuggestions: "The model had no suggestion for these expenses.",
+    suggestionsUnavailable:
+      "Local suggestions are unavailable. Check that the Ollama model is installed.",
+    suggested: "Suggested",
+    applySuggestion: "Apply as merchant rule",
+    dismissSuggestion: "Dismiss",
     unknownMerchant: "Unknown merchant",
     expense: "expense",
     categoryFor: (merchant: string, date: string) =>
@@ -104,6 +113,15 @@ export const messages = {
     merchant: "Estabelecimento",
     amount: "Valor",
     category: "Categoria",
+    suggestCategories: "Sugerir categorias",
+    suggesting: "Gerando sugestões locais…",
+    suggestionsReady: "Revise as sugestões abaixo antes de aplicar.",
+    noSuggestions: "O modelo não encontrou sugestões para essas despesas.",
+    suggestionsUnavailable:
+      "As sugestões locais estão indisponíveis. Verifique se o modelo está instalado no Ollama.",
+    suggested: "Sugestão",
+    applySuggestion: "Aplicar como regra",
+    dismissSuggestion: "Dispensar",
     unknownMerchant: "Estabelecimento desconhecido",
     expense: "despesa",
     categoryFor: (merchant: string, date: string) =>
