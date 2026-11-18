@@ -33,6 +33,14 @@ class Rule(BaseModel):
     category: Category
 
 
+class Review(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item: UUID
+    transaction: UUID
+    decision: Literal["include", "exclude", "reset"]
+
+
 async def dashboard_query(query: str, **parameters: str) -> list[dict]:
     password = Path("/run/secrets/dashboard_password").read_text(encoding="utf-8").strip()
     async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
@@ -55,7 +63,7 @@ async def spending(
         raise HTTPException(422, "Unsupported month")
     connections = await dashboard_query(
         "SELECT item_key AS id, formatDateTime(max(economic_date), '%Y-%m') AS latest_month "
-        "FROM analytics.spending_current GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
+        "FROM analytics.spending_dashboard GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
     )
     for index, row in enumerate(connections, start=1):
         row["is_demo"] = row["id"] == DEMO_ITEM
@@ -72,6 +80,7 @@ async def spending(
         "month": month,
         "totals": [],
         "expenses": [],
+        "reviews": [],
         "categories": get_args(Category),
     }
     if selected is None:
@@ -84,7 +93,7 @@ async def spending(
     result["totals"] = await dashboard_query(
         "SELECT currency, if(grouping(category) = 1, NULL, category) AS bucket, "
         "toString(sum(net_amount)) AS total, count() AS entries "
-        f"FROM analytics.spending_current {where}"
+        f"FROM analytics.spending_dashboard {where}AND included "
         "GROUP BY GROUPING SETS ((currency, category), (currency)) "
         "ORDER BY currency, bucket NULLS FIRST FORMAT JSONEachRow",
         **filters,
@@ -92,8 +101,15 @@ async def spending(
     result["expenses"] = await dashboard_query(
         "SELECT transaction_key AS id, economic_date AS date, currency, "
         "toString(net_amount) AS amount, merchant_label AS merchant, category "
-        f"FROM analytics.spending_current {where}"
+        f"FROM analytics.spending_dashboard {where}AND included "
         "ORDER BY date DESC, transaction_key DESC LIMIT 100 FORMAT JSONEachRow",
+        **filters,
+    )
+    result["reviews"] = await dashboard_query(
+        "SELECT transaction_key AS id, economic_date AS date, currency, "
+        "toString(net_amount) AS amount, merchant_label AS merchant, decision "
+        f"FROM analytics.spending_dashboard {where}AND reviewable "
+        "ORDER BY (decision != ''), date DESC, transaction_key DESC LIMIT 100 FORMAT JSONEachRow",
         **filters,
     )
     return result
@@ -108,17 +124,37 @@ def same_origin(request: Request) -> None:
 
 @router.post("/rules", status_code=204, dependencies=[Depends(same_origin)])
 async def save_rule(rule: Rule) -> Response:
-    where = "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} LIMIT 1 "
+    where = "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} AND included "
     scope = {"item": str(rule.item), "transaction": str(rule.transaction)}
     if not await dashboard_query(
-        f"SELECT transaction_key FROM analytics.spending_current {where}FORMAT JSONEachRow", **scope
+        f"SELECT transaction_key FROM analytics.spending_dashboard {where}FORMAT JSONEachRow",
+        **scope,
     ):
         raise HTTPException(404, "Expense is unavailable")
     await dashboard_query(
         "INSERT INTO core.spending_rules (item_key, merchant_key, category) "
         "SELECT item_key, merchant_key, {category:String} "
-        f"FROM analytics.spending_current {where}",
+        f"FROM analytics.spending_dashboard {where}",
         category=rule.category,
+        **scope,
+    )
+    return Response(status_code=204)
+
+
+@router.post("/reviews", status_code=204, dependencies=[Depends(same_origin)])
+async def save_review(review: Review) -> Response:
+    where = "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} AND reviewable "
+    scope = {"item": str(review.item), "transaction": str(review.transaction)}
+    if not await dashboard_query(
+        f"SELECT transaction_key FROM analytics.spending_dashboard {where}FORMAT JSONEachRow",
+        **scope,
+    ):
+        raise HTTPException(404, "Transaction is unavailable for review")
+    await dashboard_query(
+        "INSERT INTO core.spending_reviews (item_key, transaction_key, decision) "
+        "SELECT item_key, transaction_key, {decision:String} "
+        f"FROM analytics.spending_dashboard {where}",
+        decision=review.decision,
         **scope,
     )
     return Response(status_code=204)
