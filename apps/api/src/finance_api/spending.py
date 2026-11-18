@@ -58,7 +58,8 @@ async def spending(
         "FROM analytics.spending_current GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
     )
     for index, row in enumerate(connections, start=1):
-        row["label"] = "Synthetic demo" if row["id"] == DEMO_ITEM else f"Connection {index}"
+        row["is_demo"] = row["id"] == DEMO_ITEM
+        row["label"] = "Synthetic demo" if row["is_demo"] else f"Connection {index}"
     if item is None:
         selected = connections[0] if len(connections) == 1 else None
     else:

@@ -23,7 +23,20 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   min-height: 4rem;
+  padding-block: 0.5rem;
+}
+.header-controls,
+.language {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.language select {
+  color: #152d25;
 }
 .brand {
   font-weight: 750;

@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  categoryLabel,
+  deviceLocale,
+  formatDate,
+  formatMoney,
+  LANGUAGE_KEY,
+  messages,
+  monthChoices,
+  readLanguagePreference,
+  type LanguagePreference,
+} from "./locale";
 import "./style.css";
 
-type Connection = { id: string; label: string; latest_month: string };
+type Connection = { id: string; is_demo: boolean; latest_month: string };
 type Total = {
   currency: string;
   bucket: string | null;
@@ -26,21 +37,41 @@ type Spending = {
   categories: string[];
 };
 
-function money(amount: string, currency: string): string {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).format(
-    Number(amount),
-  );
-}
+const years = Array.from(
+  { length: 2148 - 1970 + 1 },
+  (_, index) => 2148 - index,
+);
 
 function App() {
+  const [preference, setPreference] = useState(readLanguagePreference);
+  const locale =
+    preference === "device" ? deviceLocale(navigator.languages) : preference;
   const [item, setItem] = useState("");
   const [month, setMonth] = useState("");
   const [data, setData] = useState<Spending>();
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useState<"loadError" | "saveError">();
+  const [notice, setNotice] = useState(false);
+  const copy = messages[locale];
+  const number = new Intl.NumberFormat(locale);
+  const [activeYear, activeMonth] = (month || data?.month || "").split("-");
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = `${copy.title} | ${copy.brand}`;
+  }, [locale, copy]);
+
+  function changeLanguage(value: LanguagePreference) {
+    setPreference(value);
+    try {
+      if (value === "device") localStorage.removeItem(LANGUAGE_KEY);
+      else localStorage.setItem(LANGUAGE_KEY, value);
+    } catch {
+      // The current session can still switch languages.
+    }
+  }
 
   useEffect(() => {
     const request = new AbortController();
@@ -48,7 +79,7 @@ function App() {
     if (item) query.set("item", item);
     if (month) query.set("month", month);
     setLoading(true);
-    setError("");
+    setError(undefined);
     void fetch(`/api/spending?${query}`, { signal: request.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error();
@@ -56,7 +87,7 @@ function App() {
         if (!request.signal.aborted) setData(spending);
       })
       .catch(() => {
-        if (!request.signal.aborted) setError("Spending could not be loaded.");
+        if (!request.signal.aborted) setError("loadError");
       })
       .finally(() => {
         if (!request.signal.aborted) setLoading(false);
@@ -67,8 +98,8 @@ function App() {
   async function classify(transaction: string, category: string) {
     if (!data?.selected) return;
     setSaving(true);
-    setError("");
-    setNotice("");
+    setError(undefined);
+    setNotice(false);
     try {
       const response = await fetch("/api/spending/rules", {
         method: "POST",
@@ -77,10 +108,10 @@ function App() {
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) throw new Error();
-      setNotice("Category rule saved.");
+      setNotice(true);
       setRevision((value) => value + 1);
     } catch {
-      setError("The category could not be saved.");
+      setError("saveError");
     } finally {
       setSaving(false);
     }
@@ -96,84 +127,135 @@ function App() {
     <>
       <header className="topbar">
         <div className="frame masthead">
-          <span className="brand">Personal Finance</span>
-          <span className="private">Local workspace</span>
+          <span className="brand">{copy.brand}</span>
+          <div className="header-controls">
+            <span className="private">{copy.workspace}</span>
+            <label className="language">
+              {copy.language}
+              <select
+                value={preference}
+                onChange={(event) =>
+                  changeLanguage(event.target.value as LanguagePreference)
+                }
+              >
+                <option value="device">{copy.deviceLanguage}</option>
+                <option value="en-US" lang="en">
+                  English
+                </option>
+                <option value="pt-BR" lang="pt-BR">
+                  Português (Brasil)
+                </option>
+              </select>
+            </label>
+          </div>
         </div>
       </header>
       <main className="frame" aria-busy={loading}>
         <div className="intro">
-          <h1>Monthly spending</h1>
+          <h1>{copy.title}</h1>
           <div className="filters">
             <label>
-              Connection
+              {copy.connection}
               <select
                 value={item || data?.selected?.id || ""}
                 onChange={(event) => {
                   setItem(event.target.value);
                   setMonth("");
-                  setNotice("");
+                  setNotice(false);
                 }}
                 disabled={saving || !data?.connections.length}
               >
-                <option value="">Select a connection</option>
-                {data?.connections.map((connection) => (
+                <option value="">{copy.selectConnection}</option>
+                {data?.connections.map((connection, index) => (
                   <option key={connection.id} value={connection.id}>
-                    {connection.label}
+                    {connection.is_demo
+                      ? copy.syntheticDemo
+                      : `${copy.connection} ${number.format(index + 1)}`}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              Month
-              <input
-                type="month"
-                min="1970-01"
-                max="2148-12"
-                disabled={saving || !data?.selected}
-                value={month || data?.month || ""}
-                onChange={(event) => setMonth(event.target.value)}
-              />
+              {copy.month}
+              <select
+                value={activeMonth || ""}
+                disabled={saving || loading || !data?.selected || !activeYear}
+                onChange={(event) =>
+                  setMonth(`${activeYear}-${event.target.value}`)
+                }
+              >
+                {!activeMonth && <option value="">—</option>}
+                {monthChoices(locale).map(({ value, label }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {copy.year}
+              <select
+                value={activeYear}
+                disabled={saving || loading || !data?.selected || !activeMonth}
+                onChange={(event) =>
+                  setMonth(`${event.target.value}-${activeMonth}`)
+                }
+              >
+                {!activeYear && <option value="">—</option>}
+                {years.map((year) => (
+                  <option key={year}>{year}</option>
+                ))}
+              </select>
             </label>
           </div>
         </div>
-        {notice && <p role="status">{notice}</p>}
+        {notice && <p role="status">{copy.saved}</p>}
         {error && (
           <p role="alert">
-            {error}{" "}
+            {copy[error]}{" "}
             <button type="button" onClick={() => setRevision((n) => n + 1)}>
-              Reload
+              {copy.reload}
             </button>
           </p>
         )}
-        {loading && <p role="status">Loading expenses…</p>}
+        {loading && <p role="status">{copy.loading}</p>}
         {!loading && !error && !data?.selected && (
           <p className="empty">
             {data?.connections.length
-              ? "Select a connection to view its spending."
-              : "No expenses are available. Load the synthetic demo or replay a connection."}
+              ? copy.selectForSpending
+              : copy.noExpenses}
           </p>
         )}
         {!loading && !error && data?.selected && !currencies.length && (
-          <p className="empty">No posted spending for this month.</p>
+          <p className="empty">{copy.noSpending}</p>
         )}
         {!loading && !error && data?.selected && currencies.length > 0 && (
           <>
             <div className="summary">
               {currencies.map((row) => (
                 <div key={row.currency}>
-                  <span>Net spending · {row.currency}</span>
-                  <strong>{money(row.total, row.currency)}</strong>
-                  <small>{row.entries} posted entries</small>
+                  <span>
+                    {copy.netSpending} · {row.currency}
+                  </span>
+                  <strong>
+                    {formatMoney(row.total, row.currency, locale)}
+                  </strong>
+                  <small>
+                    {number.format(Number(row.entries))}{" "}
+                    {Number(row.entries) === 1
+                      ? copy.postedEntry
+                      : copy.postedEntries}
+                  </small>
                 </div>
               ))}
               <div>
-                <span>Uncategorized</span>
-                <strong>{uncategorized}</strong>
-                <small>Posted entries awaiting a category</small>
+                <span>{categoryLabel("Uncategorized", locale)}</span>
+                <strong>{number.format(uncategorized)}</strong>
+                <small>{copy.awaitingCategory}</small>
               </div>
             </div>
             <section className="panel" aria-labelledby="categories">
-              <h2 id="categories">Spending by category</h2>
+              <h2 id="categories">{copy.spendingByCategory}</h2>
               {currencies.map(({ currency }) => {
                 const rows = data.totals
                   .filter((row) => row.currency === currency && row.bucket)
@@ -187,14 +269,16 @@ function App() {
                     <h3>{currency}</h3>
                     {rows.map((row) => (
                       <div className="bar" key={row.bucket}>
-                        <span>{row.bucket}</span>
+                        <span>
+                          {row.bucket && categoryLabel(row.bucket, locale)}
+                        </span>
                         <meter
                           aria-hidden="true"
                           min={0}
                           max={max}
                           value={Math.abs(Number(row.total))}
                         />
-                        <span>{money(row.total, currency)}</span>
+                        <span>{formatMoney(row.total, currency, locale)}</span>
                       </div>
                     ))}
                   </div>
@@ -202,32 +286,36 @@ function App() {
               })}
             </section>
             <section className="panel" aria-labelledby="expenses">
-              <h2 id="expenses">Recent expenses</h2>
-              <p>
-                A category change applies to matching expenses in this
-                connection.
-              </p>
+              <h2 id="expenses">{copy.recentExpenses}</h2>
+              <p>{copy.matchingExpenses}</p>
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th scope="col">Date</th>
-                      <th scope="col">Merchant</th>
-                      <th scope="col">Amount</th>
-                      <th scope="col">Category</th>
+                      <th scope="col">{copy.date}</th>
+                      <th scope="col">{copy.merchant}</th>
+                      <th scope="col">{copy.amount}</th>
+                      <th scope="col">{copy.category}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.expenses.map((entry) => (
                       <tr key={entry.id}>
                         <td>
-                          <time dateTime={entry.date}>{entry.date}</time>
+                          <time dateTime={entry.date}>
+                            {formatDate(entry.date, locale)}
+                          </time>
                         </td>
-                        <td>{entry.merchant || "Unknown merchant"}</td>
-                        <td>{money(entry.amount, entry.currency)}</td>
+                        <td>{entry.merchant || copy.unknownMerchant}</td>
+                        <td>
+                          {formatMoney(entry.amount, entry.currency, locale)}
+                        </td>
                         <td>
                           <select
-                            aria-label={`Category for ${entry.merchant || "expense"} on ${entry.date}`}
+                            aria-label={copy.categoryFor(
+                              entry.merchant || copy.expense,
+                              formatDate(entry.date, locale),
+                            )}
                             disabled={saving || loading}
                             value={entry.category}
                             onChange={(event) =>
@@ -235,7 +323,9 @@ function App() {
                             }
                           >
                             {data.categories.map((category) => (
-                              <option key={category}>{category}</option>
+                              <option key={category} value={category}>
+                                {categoryLabel(category, locale)}
+                              </option>
                             ))}
                           </select>
                         </td>
@@ -244,9 +334,7 @@ function App() {
                   </tbody>
                 </table>
               </div>
-              {data.expenses.length === 100 && (
-                <p>Showing the most recent 100 entries.</p>
-              )}
+              {data.expenses.length === 100 && <p>{copy.recentLimit}</p>}
             </section>
           </>
         )}
