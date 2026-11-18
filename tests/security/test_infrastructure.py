@@ -41,6 +41,7 @@ def test_private_networks_and_only_loopback_publications():
     assert COMPOSE["services"]["web"]["networks"] == ["frontend"]
     assert COMPOSE["services"]["clickhouse"]["networks"] == ["data"]
     assert COMPOSE["services"]["ollama"]["networks"] == ["ai"]
+    assert COMPOSE["services"]["api"]["networks"] == ["frontend", "data", "ai"]
     assert COMPOSE["services"]["restore"]["networks"] == ["recovery"]
 
 

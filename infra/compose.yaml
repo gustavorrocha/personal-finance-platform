@@ -42,7 +42,7 @@ services:
     user: '10001:10001'
     read_only: true
     tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
-    networks: [frontend, data]
+    networks: [frontend, data, ai]
     ports: ['127.0.0.1:8000:8000']
     mem_limit: 256m
     secrets: [api_password, dashboard_password]
@@ -77,13 +77,14 @@ services:
     user: '10001:10001'
     environment:
       OLLAMA_NO_CLOUD: '1'
+      OLLAMA_NUM_PARALLEL: '1'
       OLLAMA_HOST: '0.0.0.0:11434'
       OLLAMA_MODELS: /models
       HOME: /tmp
     read_only: true
     tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
     networks: [ai]
-    mem_limit: 1g
+    mem_limit: 3g
     volumes:
       - ${FINANCE_PRIVATE_DIR}/models:/models
     healthcheck:
