@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   categoryLabel,
+  deviceLocale,
   formatDate,
   formatMoney,
   LANGUAGE_KEY,
   messages,
   monthChoices,
-  readLocale,
-  type Locale,
+  readLanguagePreference,
+  type LanguagePreference,
 } from "./locale";
 import "./style.css";
 
@@ -42,7 +43,9 @@ const years = Array.from(
 );
 
 function App() {
-  const [locale, setLocale] = useState(readLocale);
+  const [preference, setPreference] = useState(readLanguagePreference);
+  const locale =
+    preference === "device" ? deviceLocale(navigator.languages) : preference;
   const [item, setItem] = useState("");
   const [month, setMonth] = useState("");
   const [data, setData] = useState<Spending>();
@@ -58,12 +61,17 @@ function App() {
   useEffect(() => {
     document.documentElement.lang = locale;
     document.title = `${copy.title} | ${copy.brand}`;
+  }, [locale, copy]);
+
+  function changeLanguage(value: LanguagePreference) {
+    setPreference(value);
     try {
-      localStorage.setItem(LANGUAGE_KEY, locale);
+      if (value === "device") localStorage.removeItem(LANGUAGE_KEY);
+      else localStorage.setItem(LANGUAGE_KEY, value);
     } catch {
       // The current session can still switch languages.
     }
-  }, [locale, copy]);
+  }
 
   useEffect(() => {
     const request = new AbortController();
@@ -125,9 +133,12 @@ function App() {
             <label className="language">
               {copy.language}
               <select
-                value={locale}
-                onChange={(event) => setLocale(event.target.value as Locale)}
+                value={preference}
+                onChange={(event) =>
+                  changeLanguage(event.target.value as LanguagePreference)
+                }
               >
+                <option value="device">{copy.deviceLanguage}</option>
                 <option value="en-US" lang="en">
                   English
                 </option>

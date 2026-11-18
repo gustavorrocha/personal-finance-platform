@@ -1,4 +1,5 @@
 export type Locale = "en-US" | "pt-BR";
+export type LanguagePreference = Locale | "device";
 
 export const LANGUAGE_KEY = "finance-language";
 
@@ -7,6 +8,7 @@ export const messages = {
     brand: "Personal Finance",
     workspace: "Local workspace",
     language: "Language",
+    deviceLanguage: "Use device language",
     title: "Monthly spending",
     connection: "Connection",
     syntheticDemo: "Synthetic demo",
@@ -44,6 +46,7 @@ export const messages = {
     brand: "Finanças Pessoais",
     workspace: "Ambiente local",
     language: "Idioma",
+    deviceLanguage: "Usar idioma do dispositivo",
     title: "Gastos mensais",
     connection: "Conexão",
     syntheticDemo: "Demonstração com dados fictícios",
@@ -126,11 +129,21 @@ export function monthChoices(locale: Locale) {
   }));
 }
 
-export function readLocale(): Locale {
+export function deviceLocale(languages: readonly string[]): Locale {
+  for (const language of languages) {
+    const base = language.toLowerCase().split("-")[0];
+    if (base === "pt") return "pt-BR";
+    if (base === "en") return "en-US";
+  }
+  return "en-US";
+}
+
+export function readLanguagePreference(): LanguagePreference {
   try {
-    if (localStorage.getItem(LANGUAGE_KEY) === "pt-BR") return "pt-BR";
+    const saved = localStorage.getItem(LANGUAGE_KEY);
+    if (saved === "pt-BR" || saved === "en-US") return saved;
   } catch {
     // Changing languages still works when browser storage is disabled.
   }
-  return "en-US";
+  return "device";
 }

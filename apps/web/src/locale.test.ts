@@ -2,10 +2,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   categoryLabel,
+  deviceLocale,
   formatDate,
   formatMoney,
   monthChoices,
 } from "./locale.ts";
+
+test("device language chooses the first supported browser preference", () => {
+  assert.equal(deviceLocale(["pt-BR", "en-US"]), "pt-BR");
+  assert.equal(deviceLocale(["en-GB", "pt-BR"]), "en-US");
+  assert.equal(deviceLocale(["es", "pt-PT"]), "pt-BR");
+  assert.equal(deviceLocale(["es-419"]), "en-US");
+  assert.equal(deviceLocale([]), "en-US");
+});
 
 test("Portuguese category labels leave saved identifiers available in English", () => {
   const translations = {
