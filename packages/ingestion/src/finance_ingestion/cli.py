@@ -16,6 +16,7 @@ from finance_pluggy.coverage import audit_from_environment, configured_client, i
 
 from .collection import collect, entity_key, item_key
 from .silver import SilverWarehouse
+from .spending_demo import load_demo
 from .synthetic import capture_synthetic
 from .warehouse import BronzeWarehouse
 
@@ -119,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     audit.add_argument("--redact", action="store_true", help="Redaction is always enabled")
     sync_parser = commands.add_parser("sync", help="Collect existing provider items")
     sync_parser.add_argument("--full", action="store_true", help="Read full available history")
+    commands.add_parser("demo-spending", help="Load a synthetic spending connection")
     deletions = commands.add_parser(
         "apply-deletions", help="Read a reviewed provider event on stdin"
     )
@@ -196,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "sync":
             summary = sync(silver, full=args.full)
             exit_code = int(any(run["status"] in ("failed", "partial") for run in summary["runs"]))
+        elif args.command == "demo-spending":
+            summary = {"status": "complete", "records": load_demo(silver)}
         elif args.command == "apply-deletions":
             raw = sys.stdin.buffer.read(1024 * 1024 + 1)
             if len(raw) > 1024 * 1024:
