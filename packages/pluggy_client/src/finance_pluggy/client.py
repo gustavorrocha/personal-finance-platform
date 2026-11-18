@@ -3,6 +3,7 @@
 import json
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from time import sleep
 from urllib.parse import parse_qs
 
@@ -24,6 +25,12 @@ class Unavailable(AuditError):
     """A read returned a permission, resource, or validation error."""
 
 
+@dataclass(frozen=True)
+class ResponsePage:
+    raw: bytes
+    data: dict
+
+
 class Pluggy:
     def __init__(self, http: httpx.Client, max_pages: int):
         self.http = http
@@ -38,13 +45,13 @@ class Pluggy:
                 "clientId": client_id,
                 "clientSecret": client_secret,
             },
-        )
+        ).data
         key = response.get("apiKey")
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.~-]{1,8192}", key):
             raise AuditError("Invalid Pluggy authentication response.")
         self.api_key = key
 
-    def _request(self, path: str, *, params=None, query=None, credentials=None) -> dict:
+    def _request(self, path: str, *, params=None, query=None, credentials=None) -> ResponsePage:
         if credentials is not None:
             if path != "/auth":
                 raise AuditError("Unsupported Pluggy authentication path.")
@@ -78,7 +85,7 @@ class Pluggy:
                         result = json.loads(raw)
                         if not isinstance(result, dict):
                             raise AuditError("Invalid Pluggy response shape.")
-                        return result
+                        return ResponsePage(bytes(raw), result)
             except (httpx.HTTPError, ValueError, RecursionError):
                 raise AuditError("Pluggy connection failed or returned invalid JSON.") from None
             if credentials is None and status in (400, 403, 404, 422):
@@ -90,9 +97,16 @@ class Pluggy:
         raise AuditError("Pluggy retry budget reached.")
 
     def item(self, item_id: str) -> dict:
+        return self.item_page(item_id).data
+
+    def item_page(self, item_id: str) -> ResponsePage:
         return self._request(f"/items/{item_id}")
 
     def records(self, path: str, **filters: str) -> Iterator[dict]:
+        for response in self.pages(path, **filters):
+            yield from response.data["results"]
+
+    def pages(self, path: str, **filters: str) -> Iterator[ResponsePage]:
         cursor = path == "/v2/transactions"
         query = None
         seen = set()
@@ -100,11 +114,12 @@ class Pluggy:
             params = None if query is not None else filters
             if not cursor:
                 params = {**filters, "page": page, "pageSize": 500}
-            data = self._request(path, params=params, query=query)
+            response = self._request(path, params=params, query=query)
+            data = response.data
             rows = data.get("results")
             if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
                 raise AuditError("Invalid Pluggy results.")
-            yield from rows
+            yield response
             if cursor:
                 if "next" not in data:
                     raise AuditError("Missing Pluggy cursor.")
