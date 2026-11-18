@@ -1,8 +1,8 @@
 # Personal Finance Platform
 
-This local workspace uses ClickHouse as its only database. Phase 1 adds immutable Bronze
-captures, manifests, quarantine, and offline replay. The current workflow uses synthetic
-fixtures. Provider access and financial models belong to later phases.
+This local workspace uses ClickHouse as its only database. It supports synthetic
+validation and optional sync of existing Pluggy connections into immutable Bronze
+captures and typed Silver views.
 
 ## Run on Windows
 
@@ -53,11 +53,11 @@ Retry the same capture with the same UUID, timestamp, and bytes. Assign a new UU
 new observation. Filesystem listing and verification run offline. Capture registration,
 warehouse replay, and rebuild use Docker exec against local ClickHouse.
 
-Read current state through `metadata.bronze_objects_current` and
-`metadata.synthetic_bronze_records_published`. Run warehouse writers serially. Rebuild
-publishes a complete generation after validation and leaves prior generations available
-on disk. The acceptance script also rebuilds into an independent temporary ClickHouse
-instance and checks that corruption cannot replace published rows.
+Read synthetic state through `metadata.bronze_objects_current` and
+`metadata.synthetic_bronze_records_published`. Run warehouse writers serially. The synthetic
+rebuild publishes a complete generation after validation. The acceptance script also rebuilds
+into an independent temporary ClickHouse instance and checks that corruption cannot replace
+published rows.
 
 See [Phase 1 results](docs/phase-1-results.md), [data contracts](docs/data-contracts.md),
 and [the publication decision](docs/adr/ADR-014-bronze-replay-publication.md).
@@ -67,6 +67,20 @@ and [the publication decision](docs/adr/ADR-014-bronze-replay-publication.md).
 Phase 2 adds `uv run --frozen finance audit-coverage --redact` for existing Pluggy
 connections. See the [coverage runbook](docs/provider-coverage.md)
 for local credential configuration and how to interpret the redacted report.
+
+## Sync and verify Silver
+
+Run the synthetic integration check against disposable ClickHouse using the local Compose
+configuration created during bootstrap.
+
+```powershell
+$env:FINANCE_TEST_CLICKHOUSE = '1'
+uv run --frozen pytest -q tests/test_provider_ingestion.py
+Remove-Item Env:\FINANCE_TEST_CLICKHOUSE
+```
+
+The [provider ingestion runbook](docs/provider-ingestion.md) covers first and incremental
+syncs, local aggregate checks, failure recovery, and applying reviewed deletion events.
 
 ## Foundation checks and shutdown
 
@@ -92,7 +106,7 @@ The Lake needs an independent backup before real-data use.
 |---|---|
 | `apps/api`, `apps/web` | FastAPI health endpoint and static React frontend |
 | `packages/lake` | ObjectStore, local backend, manifests, and file replay |
-| `packages/ingestion` | Local CLI and ClickHouse indexing and replay |
+| `packages/ingestion` | Local CLI, provider collection, ClickHouse indexing and Silver replay |
 | `infra`, `scripts` | Compose, SQL migrations, and operator commands |
 | `tests`, `.github/workflows/ci.yml` | Synthetic tests and CI |
 
@@ -102,6 +116,6 @@ Start the container API through Compose. For a manual Uvicorn run on the host, b
 it to `127.0.0.1`.
 
 See the [implementation plan](docs/implementation-plan.md), [operations runbook](docs/operations-runbook.md),
-[threat model](docs/threat-model.md), and [ADRs](docs/adr/README.md). Phase 1 acceptance uses
+[threat model](docs/threat-model.md), and [ADRs](docs/adr/README.md). Acceptance tests use
 synthetic data. Disk encryption, independent backups, and an approved retention policy
 are operational prerequisites for real data.

@@ -1,10 +1,12 @@
 """Aggregate existing consent data into a redacted report without persistence."""
 
 import json
+import logging
 import os
 import re
 from collections import Counter
 from collections.abc import Callable, Iterable
+from contextlib import contextmanager
 from datetime import date, datetime
 from uuid import UUID
 
@@ -165,7 +167,8 @@ def audit_source(client: Pluggy, source: str, item_id: str) -> dict:
     return report
 
 
-def audit_from_environment(max_pages: int) -> dict:
+@contextmanager
+def configured_client(max_pages: int):
     names = ("PLUGGY_CLIENT_ID", "PLUGGY_CLIENT_SECRET", "PLUGGY_ITEM_IDS")
     missing = [name for name in names if not os.environ.get(name, "").strip()]
     if missing:
@@ -180,9 +183,16 @@ def audit_from_environment(max_pages: int) -> dict:
     items = [identifier(value) for value in values]
     if len(set(items)) != len(items):
         raise AuditError("PLUGGY_ITEM_IDS must contain unique item UUIDs.")
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     with httpx.Client(timeout=15, trust_env=False) as http:
         client = Pluggy(http, max_pages)
         client.authenticate(identifier(client_id), secret)
+        yield client, items
+
+
+def audit_from_environment(max_pages: int) -> dict:
+    with configured_client(max_pages) as (client, items):
         return {
             "redacted": True,
             "sources": [
