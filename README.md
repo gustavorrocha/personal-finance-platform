@@ -62,6 +62,12 @@ instance and checks that corruption cannot replace published rows.
 See [Phase 1 results](docs/phase-1-results.md), [data contracts](docs/data-contracts.md),
 and [the publication decision](docs/adr/ADR-014-bronze-replay-publication.md).
 
+## Audit provider coverage
+
+Phase 2 adds `uv run --frozen finance audit-coverage --redact` for existing Pluggy
+connections. See the [coverage runbook](docs/provider-coverage.md)
+for local credential configuration and how to interpret the redacted report.
+
 ## Foundation checks and shutdown
 
 For a local database GUI, run `scripts/clickhouse_gui.ps1` and connect over HTTP to

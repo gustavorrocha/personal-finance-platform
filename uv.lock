@@ -7,6 +7,7 @@ members = [
     "finance-api",
     "finance-ingestion",
     "finance-lake",
+    "finance-pluggy",
     "personal-finance",
 ]
 
@@ -182,10 +183,14 @@ version = "0.0.0"
 source = { editable = "packages/ingestion" }
 dependencies = [
     { name = "finance-lake" },
+    { name = "finance-pluggy" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "finance-lake", editable = "packages/lake" }]
+requires-dist = [
+    { name = "finance-lake", editable = "packages/lake" },
+    { name = "finance-pluggy", editable = "packages/pluggy_client" },
+]
 
 [[package]]
 name = "finance-lake"
@@ -197,6 +202,17 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.14,<3" }]
+
+[[package]]
+name = "finance-pluggy"
+version = "0.0.0"
+source = { editable = "packages/pluggy_client" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.28,<1" }]
 
 [[package]]
 name = "h11"
