@@ -5,6 +5,11 @@ spending by month, connection and currency. Category changes save a rule for the
 matching merchant in that connection. Selecting **Uncategorized** explicitly puts
 matching purchases back in the review list. Replay preserves these rule events.
 
+Use **Language** in the dashboard header to switch between English and
+**Português (Brasil)**. The selection is stored locally in the browser. Category
+labels, dates and amounts are displayed in the chosen language, and both modes
+use the same saved rules and transaction currency.
+
 ## What counts as spending
 
 - Count posted debit transactions with card-account, card metadata, or recognized
