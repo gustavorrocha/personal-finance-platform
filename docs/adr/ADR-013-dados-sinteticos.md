@@ -1,19 +1,19 @@
-# ADR-013: Separação entre sintéticos públicos e reais privados
+# ADR-013 — Public synthetic data and private real data
 
-Data: 17/11/2026. Status: Aceita na Fase 0.
+November 17, 2026. Accepted in Phase 0.
 
-## Contexto
+## Context
 
-CI/repositório não devem conter informações pessoais ou bancárias.
+CI and Git must exclude personal and bank data.
 
-## Decisão
+## Decision
 
-Fixtures inteiramente inventadas; runtime desta fase restrito a sintéticos; diretório privado fora de Git/cloud sync.
+Use invented fixtures and keep private runtime directories outside Git and cloud sync.
 
-## Alternativas
+## Alternatives
 
-Anonimizar extratos reais para CI ainda cria risco de reidentificação e vazamento.
+Anonymized real statements may still leak or permit reidentification.
 
-## Consequências
+## Consequences
 
-Não enviar dumps/logs/volumes para CI. Liberar dados reais depende de fases e avaliação explícitas.
+Keep private dumps, logs, and volumes out of CI. Enable real data only in its authorized phase.

@@ -1,4 +1,3 @@
-# performance
+# Performance
 
-Fronteira reservada para a Fase 8: Métricas financeiras com qualidade/cobertura explícita.
-Sem implementação, dependências ou serviço em execução na Fase 0.
+Phase 8 introduces financial performance metrics with explicit quality and coverage.

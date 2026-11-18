@@ -1,19 +1,19 @@
-# ADR-005: Append-only e última versão determinística
+# ADR-005 — Append-only events and deterministic current reads
 
-Data: 17/11/2026. Status: Direção aceita; execução a partir da Fase 3.
+November 17, 2026. Accepted for Phase 3 onward.
 
-## Contexto
+## Context
 
-ReplacingMergeTree deduplica eventualmente; SELECT comum pode duplicar valores.
+ReplacingMergeTree resolves duplicate versions eventually, so plain SELECT can return multiple versions.
 
-## Decisão
+## Decision
 
-Definir versões monotônicas por chave, event_id para desempate e leitura FINAL/argMax documentada antes de marts.
+Define monotonic versions per key, break ties by event_id, and document FINAL or argMax reads before creating marts.
 
-## Alternativas
+## Alternatives
 
-OPTIMIZE FINAL diário não é garantia de corretude.
+Running OPTIMIZE FINAL daily does not guarantee correct reads.
 
-## Consequências
+## Consequences
 
-Nenhum modelo de versões financeiro é implementado na Fase 0; testes de coexistência são futuros.
+Financial version models and coexistence tests are scheduled for later phases.

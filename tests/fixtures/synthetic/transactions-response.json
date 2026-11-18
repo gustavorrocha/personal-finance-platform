@@ -1,0 +1,1 @@
+{"results":[{"id":"synthetic-transaction-a","accountId":"synthetic-account-a","amount":"12.34","description":"SYNTHETIC MARKET"},{"id":"synthetic-transaction-b","accountId":"synthetic-account-a","amount":"-2.34","description":"SYNTHETIC REFUND"}],"total":2,"next":null}

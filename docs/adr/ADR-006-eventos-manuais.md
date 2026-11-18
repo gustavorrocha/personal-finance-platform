@@ -1,19 +1,19 @@
-# ADR-006: Eventos manuais independentes de rebuild
+# ADR-006 — Manual events independent of rebuilds
 
-Data: 17/11/2026. Status: Direção aceita; execução na Fase 4.
+November 17, 2026. Accepted for Phase 4.
 
-## Contexto
+## Context
 
-Correções humanas não podem desaparecer na reconstrução de marts.
+Human corrections must survive mart reconstruction.
 
-## Decisão
+## Decision
 
-Regras, revisões e classificações serão eventos versionados com backup próprio e read-after-write.
+Capture rules, reviews, and classifications as versioned events with independent backups and read-after-write support.
 
-## Alternativas
+## Alternatives
 
-Atualização célula a célula ou edição somente em Gold perde rastreabilidade.
+Updating cells or editing only Gold would lose traceability.
 
-## Consequências
+## Consequences
 
-Definir contratos de revogação/precedência antes de endpoints de escrita; nenhum existe agora.
+Define revocation and precedence contracts before adding write endpoints.

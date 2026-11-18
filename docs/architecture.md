@@ -1,42 +1,22 @@
-# Arquitetura da Fase 0
+# Local architecture
 
-`web → api → ClickHouse`. Ollama está pronto, sem modelo, separado dos demais serviços.
-Não há serviços de ingestão, dbt ou agendamento em execução.
+The web service calls FastAPI, which reads ClickHouse. Ollama is isolated and runs without a model in the foundation stack. The host CLI handles synthetic ingestion and replay. Scheduling and dbt are planned for later phases.
 
 | Network | Services | Boundary |
 |---|---|---|
-| frontend | web, api | Private bridge; localhost publishing; outbound masquerading disabled |
-| data | api, clickhouse | Usuário health pode ler somente schema_migrations |
-| ai | ollama | Inferência sem egress e sem clientes nesta fase |
-| egress | nenhum | Reservada e fechada; abertura futura requer revisão |
-| recovery | restore efêmero | Base limpa em tmpfs sem acesso à base original |
+| frontend | api, web | Private bridge with explicit loopback publishing and masquerading disabled |
+| data | api, clickhouse | Internal network. The API health user can read only the migration ledger. |
+| ai | ollama | Internal network without runtime clients in the foundation |
+| egress | none | Reserved and closed |
+| recovery | temporary restore container | Isolated ClickHouse in tmpfs |
+| gui | optional clickhouse-gui proxy | Loopback HTTP on 8123, with scoped reader authentication |
 
-Somente API (`127.0.0.1:8000`) e web (`127.0.0.1:8080`) publicam portas.
-ClickHouse e Ollama não possuem mapeamentos. API é dual-homed e não fornece proxy genérico.
-Todos os processos são non-root, sem capabilities, com limites de memória/PIDs.
-Volumes bind ficam em raiz privada com ACL, externa ao Git e sincronização na nuvem.
+The web and API publish only on `127.0.0.1`, on ports 8080 and 8000. The default configuration leaves ClickHouse and Ollama ports unpublished. The optional GUI proxy joins the data network and forwards HTTP only. The database container remains on the internal data network. Services use non-root accounts, dropped capabilities, and memory and process limits. Private bind mounts live outside Git and cloud sync under host ACLs.
 
-The frontend bridge is deliberately not `internal: true`: internal-only endpoints suppressed
-host port publication on the tested Docker engine. The data/AI/recovery networks remain
-internal. Disabling IP masquerading is defense in depth, not an egress firewall: live probes
-on Docker Desktop found API/web could still reach an external TCP address. ClickHouse and
-Ollama probes were blocked. Host firewall policy is required for stronger frontend egress
-restrictions; only synthetic data is permitted here.
+The publishing bridge permits host loopback access. On the tested Docker Desktop version, API and web still had external TCP access with masquerading disabled. Host firewall policy governs stronger egress isolation. Internal ClickHouse and Ollama egress probes were blocked.
 
-Workspace uv: `finance-api` e `finance-lake`; fronteiras futuras ficam documentadas,
-sem instalar bibliotecas de integrações que não são usadas. Frontend tem lock npm independente.
-SQL cria somente `core`, `analytics`, `metadata`, ledger e tabela sintética de infraestrutura.
-A migração é idempotente, com checksum e execução por operador único, antes da API.
-Não há rollback destrutivo: para reverter uma mudança futura, adicionar migração compensatória.
+The uv workspace contains the API, Lake, and ingestion packages. The frontend has a separate npm lockfile. SQL migrations create `core`, `analytics`, and `metadata`, a migration ledger, and synthetic tables and views. Migrations run serially, are checksum tracked, and use additive or compensating changes.
 
-O contrato de Lake é abstrato: nenhuma escrita Bronze, manifesto, hash de objeto real ou replay
-foi implementado. Não há S3/MinIO nem segundo SGBD. Metadados financeiros também ficam para as
-respectivas fases. Retornos e valores monetários não são calculados na Fase 0.
+The operator CLI writes Bronze outside the repository. The API has no Lake mount. Captures publish a manifest after durable gzip objects. ClickHouse indexes can be rebuilt from the Lake. Replay verifies the capture, stages a generation, and publishes a final event. See [data contracts](data-contracts.md) and [ADR-014](adr/ADR-014-bronze-replay-publication.md).
 
-Referências consultadas em 17/11/2026:
-[redes Compose](https://docs.docker.com/compose/how-tos/networking/),
-[ClickHouse Docker](https://clickhouse.com/docs/install/docker),
-[backup ClickHouse](https://clickhouse.com/docs/operations/backup),
-[FastAPI Docker](https://fastapi.tiangolo.com/deployment/docker/),
-[Ollama FAQ](https://github.com/ollama/ollama/blob/main/docs/faq.mdx).
-Imagens têm tags de versão completa; validar execução e digests no aceite Docker.
+References consulted November 17, 2026 include [Compose networking](https://docs.docker.com/compose/how-tos/networking/), [ClickHouse Docker](https://clickhouse.com/docs/install/docker), [ClickHouse backup](https://clickhouse.com/docs/operations/backup), [FastAPI Docker](https://fastapi.tiangolo.com/deployment/docker/), and the [Ollama FAQ](https://github.com/ollama/ollama/blob/main/docs/faq.mdx). Images use full version tags. Validate image digests and runtime behavior during acceptance.
