@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .accounts import router as accounts_router
+from .investments import router as investments_router
 from .spending import router
 
 
@@ -35,6 +36,7 @@ app.add_middleware(
 )
 app.include_router(router)
 app.include_router(accounts_router)
+app.include_router(investments_router)
 
 
 @app.exception_handler(RequestValidationError)
