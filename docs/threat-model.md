@@ -1,10 +1,10 @@
 # Threat model
 
-Assets include private secret files, future financial data, migration integrity, backups and keys, and the Windows/WSL host. The current acceptance environment uses synthetic fixtures. Trust boundaries include the browser to localhost, frontend to API, API to ClickHouse, operator to Docker, container to volume, build to registry, and future provider text to an LLM. The local host user and Docker daemon hold privileged access.
+Assets include private secret files, financial data, migration integrity, backups and keys, and the Windows/WSL host. The acceptance environment uses synthetic fixtures. Trust boundaries include the operator to Pluggy, browser to localhost, frontend to API, API to ClickHouse, operator to Docker, container to volume, build to registry, and future provider text to an LLM. The local host user and Docker daemon hold privileged access.
 
 | Threat | Control | Verification | Response |
 |---|---|---|---|
-| Pluggy credential theft | Provider integration arrives in a later phase and uses file-backed secrets | Dependency and service review | Revoke with the provider and investigate the host |
+| Pluggy credential theft | Private process environment, fixed HTTPS origin, suppressed request logs, and memory-only authentication | Mock transport, cursor-scope and output redaction tests | Revoke with the provider and investigate the host |
 | Laptop loss | Disk encryption and independent backup before real data | Manual BitLocker/WSL and restore verification | Revoke secrets and restore from separate media |
 | Host compromise | Non-root containers, dropped capabilities, no-new-privileges, ACLs, and no container Docker socket | Configuration tests and host permission review | Stop services, isolate the host, rotate keys |
 | Published payloads or logs | Log allowlists, generic errors, excluded secret files, and suppressed query/request logs | Synthetic-token scan and exception tests | Remove publication and revoke exposed secrets |
@@ -17,7 +17,8 @@ Assets include private secret files, future financial data, migration integrity,
 | Cross-network access | Dedicated AI, data, frontend, and recovery networks | Membership inspection and egress probes | Remove incorrect network membership and review bridges |
 | Local denial of service | HTTP/SQL timeouts and memory/PID limits | Configuration tests and HTTP 503 behavior | Stop the offending process and restore availability |
 | Corrupted Bronze capture | Manifest-last publication, hashes, sticky quarantine | Crash and corruption tests before replay | Preserve evidence and rebuild from a trusted capture |
-| Optional GUI access | Loopback HTTP bridge and named read-only credentials scoped to synthetic tables | Authenticated read, anonymous/default denial, denied writes and unrelated tables | Disable the GUI proxy and remove its reader configuration |
+| Forged or stale deletion events | Explicit local import, trusted event provenance and receipt time supplied by the operator, known item/account scope, and stable event identity | Synthetic replay and current-state checks | Verify the event archive and rebuild from trusted captures |
+| Optional GUI access | Loopback HTTP bridge, grants for synthetic records and limited part metadata, separate private provider index and Silver tables | Authenticated read, anonymous/default denial, denied writes and unrelated tables | Disable the GUI proxy and remove its reader configuration |
 
 The host can reach private Docker networks and mounted secrets. Local access alone does not identify the caller. Names cannot prove a directory is excluded from synchronization. Docker volumes lack inherent disk encryption. Host administrators and memory capture remain within the privileged boundary.
 
