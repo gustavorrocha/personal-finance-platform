@@ -5,9 +5,13 @@ from collections.abc import Callable
 from uuid import UUID, uuid4
 
 from finance_lake.bronze import BronzeLake, CorruptionError, ReplayRecord
-from finance_lake.manifest import json_bytes
+from finance_lake.manifest import Manifest, Source, json_bytes
 
 Execute = Callable[..., bytes]
+INDEX_TABLES = {
+    "synthetic": "metadata.bronze_objects",
+    "pluggy": "metadata.provider_bronze_objects",
+}
 
 
 class BronzeWarehouse:
@@ -15,20 +19,29 @@ class BronzeWarehouse:
         self.lake = lake
         self.execute = execute
 
-    def index_run(self, run_id: UUID) -> int:
+    def read_manifest(self, run_id: UUID, *, source: Source | None = None) -> Manifest:
         run_id = UUID(str(run_id))
         try:
-            manifest = self.lake.read_manifest(run_id)
+            return self.lake.read_manifest(run_id)
         except CorruptionError:
-            self.execute(
-                "INSERT INTO metadata.bronze_objects "
-                "(run_id,object_id,resource,object_key,manifest_key,sha256,manifest_sha256,"
-                "size_bytes,record_count,retrieved_at_utc,status,status_version) "
-                "SELECT run_id,object_id,resource,object_key,manifest_key,sha256,manifest_sha256,"
-                "size_bytes,record_count,retrieved_at_utc,'quarantined',2 "
-                f"FROM metadata.bronze_objects_current WHERE run_id='{run_id}'"
-            )
+            tables = [INDEX_TABLES[source]] if source else INDEX_TABLES.values()
+            for table in tables:
+                self.execute(
+                    f"INSERT INTO {table} "
+                    "(run_id,object_id,resource,object_key,manifest_key,sha256,manifest_sha256,"
+                    "size_bytes,record_count,retrieved_at_utc,status,status_version) "
+                    "SELECT run_id,object_id,resource,object_key,manifest_key,sha256,"
+                    "manifest_sha256,size_bytes,record_count,retrieved_at_utc,'quarantined',2 "
+                    f"FROM {table}_current WHERE run_id='{run_id}'"
+                )
             raise
+
+    def index_run(self, run_id: UUID, *, source: Source = "synthetic") -> int:
+        run_id = UUID(str(run_id))
+        table = INDEX_TABLES[source]
+        manifest = self.read_manifest(run_id, source=source)
+        if manifest.source != source:
+            raise ValueError("Capture source does not match its warehouse index")
         failed = False
         try:
             self.lake.verify_run(run_id)
@@ -56,7 +69,7 @@ class BronzeWarehouse:
                 }
             )
         self.execute(
-            "INSERT INTO metadata.bronze_objects FORMAT JSONEachRow",
+            f"INSERT INTO {table} FORMAT JSONEachRow",
             native=b"\n".join(json_bytes(row) for row in rows) + b"\n",
         )
         if failed:
@@ -115,7 +128,11 @@ class BronzeWarehouse:
         return len(records)
 
     def rebuild(self) -> int:
-        runs = self.lake.list_runs()
+        runs = [
+            run_id
+            for run_id in self.lake.list_runs()
+            if self.read_manifest(run_id, source="synthetic").source == "synthetic"
+        ]
         if not runs:
             raise FileNotFoundError("Rebuild requires at least one committed capture")
         build_id = uuid4()

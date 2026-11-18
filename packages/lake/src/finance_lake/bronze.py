@@ -1,4 +1,4 @@
-"""Manifest-last Bronze captures and offline replay. No financial provider access."""
+"""Manifest-last Bronze captures and offline replay."""
 
 import gzip
 import hashlib
@@ -8,14 +8,18 @@ import zlib
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID, uuid5
 
 from .contracts import ObjectStore
 from .manifest import (
+    PROVIDER_ENDPOINTS,
     BronzeObject,
+    CaptureKind,
     Manifest,
     Resource,
+    Source,
     json_bytes,
     object_identity,
     object_key,
@@ -27,7 +31,30 @@ class CorruptionError(ValueError):
     """A capture cannot be trusted or replayed; payload details are deliberately omitted."""
 
 
-def _parse(raw: bytes) -> dict:
+def _records(document: dict, resource: Resource) -> list[dict]:
+    if resource == "items":
+        return [document]
+    if resource == "transaction_deletions":
+        ids = document.get("transactionIds")
+        if (
+            document.get("event") != "transactions/deleted"
+            or not isinstance(ids, list)
+            or not 1 <= len(ids) <= 10000
+            or any(not isinstance(value, str) for value in ids)
+        ):
+            raise ValueError("Invalid deletion event")
+        return [{"id": value} for value in ids]
+    rows = document.get("results")
+    if (
+        not isinstance(rows, list)
+        or len(rows) > 10000
+        or any(not isinstance(record, dict) for record in rows)
+    ):
+        raise ValueError("Expected an API response with a results object array")
+    return rows
+
+
+def _parse(raw: bytes, resource: Resource) -> dict:
     def pairs(items):
         result = {}
         for key, value in items:
@@ -43,18 +70,14 @@ def _parse(raw: bytes) -> dict:
         if len(raw) > 8 * 1024 * 1024:
             raise ValueError("Response exceeds the supported size")
         value = json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant)
-        if (
-            not isinstance(value, dict)
-            or not isinstance(value.get("results"), list)
-            or len(value["results"]) > 10000
-            or any(not isinstance(record, dict) for record in value["results"])
-        ):
-            raise ValueError("Expected an API response with a results object array")
+        if not isinstance(value, dict):
+            raise ValueError("Expected a JSON object")
+        _records(value, resource)
         # Also reject values the replay JSON encoder cannot represent.
         json_bytes(value)
         return value
     except (ValueError, UnicodeError, RecursionError):
-        raise ValueError("Invalid synthetic API response") from None
+        raise ValueError("Invalid Bronze response") from None
 
 
 def _decompress(payload: bytes) -> bytes:
@@ -71,6 +94,15 @@ class ReplayRecord:
     object_id: UUID
     record_id: UUID
     record: dict
+    resource: Resource | None = None
+    scope_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class CapturePage:
+    resource: Resource
+    raw: bytes
+    scope_id: UUID | None = None
 
 
 class BronzeLake:
@@ -88,7 +120,9 @@ class BronzeLake:
         run_id: UUID,
         retrieved_at: datetime,
         item_alias: str,
-        payloads: list[tuple[Resource, bytes]],
+        payloads: list[tuple[Resource, bytes]] | list[CapturePage],
+        capture_kind: CaptureKind | None = None,
+        reference_from: date | None = None,
     ) -> Manifest:
         if not isinstance(run_id, UUID) or not isinstance(retrieved_at, datetime):
             raise ValueError("Capture identity and timestamp must be typed values")
@@ -98,24 +132,30 @@ class BronzeLake:
             existing_manifest = self.verify_run(run_id)
         except FileNotFoundError:
             existing_manifest = None
-        if not 1 <= len(payloads) <= 128 or sum(len(raw) for _, raw in payloads) > 32 * 1024 * 1024:
+        pages = [page if isinstance(page, CapturePage) else CapturePage(*page) for page in payloads]
+        if not 1 <= len(pages) <= 128 or sum(len(page.raw) for page in pages) > 32 * 1024 * 1024:
             raise ValueError("Capture exceeds the supported batch size")
+        source: Source = "synthetic" if capture_kind is None else "pluggy"
         parts = Counter()
         objects = []
         writes = []
-        for resource, raw in payloads:
+        for page in pages:
+            resource, raw = page.resource, page.raw
             if resource not in (
                 "accounts",
                 "transactions",
                 "investments",
                 "investment_movements",
                 "bills",
+                "items",
+                "resources",
+                "transaction_deletions",
             ):
-                raise ValueError("Unsupported synthetic resource")
-            document = _parse(raw)
+                raise ValueError("Unsupported Bronze resource")
+            document = _parse(raw, resource)
             parts[resource] += 1
             part = parts[resource]
-            key = object_key(run_id, retrieved_at.date().isoformat(), resource, part)
+            key = object_key(run_id, retrieved_at.date().isoformat(), resource, part, source)
             try:
                 compressed = self.store.get(key)
             except FileNotFoundError:
@@ -132,19 +172,23 @@ class BronzeLake:
                 if stored_raw != raw:
                     raise FileExistsError("Immutable capture conflict")
             raw_hash = hashlib.sha256(raw).hexdigest()
+            endpoint = f"/{resource}"
+            if source == "pluggy":
+                endpoint = PROVIDER_ENDPOINTS.get(resource, endpoint)
             objects.append(
                 BronzeObject(
                     object_id=object_identity(run_id, resource, part, raw_hash),
                     resource=resource,
-                    source_endpoint=f"/{resource}",
+                    source_endpoint=endpoint,
                     part_number=part,
                     object_key=key,
                     sha256=hashlib.sha256(compressed).hexdigest(),
                     raw_sha256=raw_hash,
                     size_bytes=len(compressed),
                     raw_size_bytes=len(raw),
-                    record_count=len(document["results"]),
+                    record_count=len(_records(document, resource)),
                     schema_fingerprint=schema_fingerprint(document),
+                    scope_id=page.scope_id,
                 )
             )
             writes.append((key, compressed))
@@ -152,7 +196,19 @@ class BronzeLake:
             run_id=run_id,
             retrieved_at_utc=retrieved_at,
             item_alias=item_alias,
-            reference_from=retrieved_at.date(),
+            source=source,
+            manifest_version=1 if source == "synthetic" else 2,
+            consent_state=(
+                "synthetic"
+                if source == "synthetic"
+                else "pending"
+                if capture_kind == "pending"
+                else "unknown"
+                if capture_kind in ("deletions", "partial")
+                else "observed"
+            ),
+            capture_kind=capture_kind,
+            reference_from=reference_from or retrieved_at.date(),
             reference_to=retrieved_at.date(),
             objects=tuple(objects),
         )
@@ -202,6 +258,18 @@ class BronzeLake:
             runs.add(run_id)
         return sorted(runs)
 
+    def record_collection_failure(self, run_id: UUID, observed: datetime) -> None:
+        self.store.put_immutable(
+            f"failures/run_id={run_id}/status.json",
+            json_bytes(
+                {
+                    "run_id": str(run_id),
+                    "attempted_at_utc": observed.isoformat(),
+                    "status": "collection-failed",
+                }
+            ),
+        )
+
     def _quarantine(self, run_id: UUID, key: str, reason: str) -> None:
         prefix = f"quarantine/run_id={run_id}"
         self.store.put_immutable(
@@ -226,7 +294,7 @@ class BronzeLake:
             json_bytes(event),
         )
 
-    def _verified_documents(self, manifest: Manifest) -> list[dict]:
+    def _verified_documents(self, manifest: Manifest, *, exact_numbers: bool = False) -> list[dict]:
         documents = []
         for item in manifest.objects:
             try:
@@ -237,18 +305,18 @@ class BronzeLake:
                 ):
                     raise ValueError("Object checksum mismatch")
                 raw = _decompress(compressed)
-                document = _parse(raw)
+                document = _parse(raw, item.resource)
                 if (
                     len(raw) != item.raw_size_bytes
                     or hashlib.sha256(raw).hexdigest() != item.raw_sha256
-                    or len(document["results"]) != item.record_count
+                    or len(_records(document, item.resource)) != item.record_count
                     or schema_fingerprint(document) != item.schema_fingerprint
                 ):
                     raise ValueError("Object provenance mismatch")
             except (OSError, ValueError, EOFError, zlib.error):
                 self._quarantine(manifest.run_id, item.object_key, "invalid-object")
                 raise CorruptionError("Capture quarantined after integrity failure") from None
-            documents.append(document)
+            documents.append(json.loads(raw, parse_float=Decimal) if exact_numbers else document)
         return documents
 
     def verify_run(self, run_id: UUID) -> Manifest:
@@ -269,10 +337,15 @@ class BronzeLake:
         manifest = self.read_manifest(run_id)
         if self.is_quarantined(run_id):
             raise CorruptionError("Capture is quarantined; automatic resurrection is forbidden")
-        documents = self._verified_documents(manifest)
+        documents = self._verified_documents(manifest, exact_numbers=manifest.source == "pluggy")
         # Verify the entire capture before yielding any record to a warehouse writer.
         for item, document in zip(manifest.objects, documents, strict=True):
-            for index, record in enumerate(document["results"]):
+            for index, record in enumerate(_records(document, item.resource)):
                 yield ReplayRecord(
-                    manifest.run_id, item.object_id, uuid5(item.object_id, str(index)), record
+                    manifest.run_id,
+                    item.object_id,
+                    uuid5(item.object_id, str(index)),
+                    record,
+                    item.resource,
+                    item.scope_id,
                 )

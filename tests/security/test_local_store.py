@@ -3,6 +3,7 @@ import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from finance_lake import LocalObjectStore
@@ -23,6 +24,19 @@ def test_immutable_writes_are_idempotent_and_conflicts_do_not_replace_data(store
         store.put_immutable(key, b"different")
     assert store.get(key) == payload
     assert store.verify(key, expected)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows extended-length path spelling")
+def test_resolved_windows_path_can_have_an_extended_prefix(store, monkeypatch):
+    original = Path.resolve
+
+    def resolve(path, *args, **kwargs):
+        resolved = original(path, *args, **kwargs)
+        return Path("\\\\?\\" + str(resolved)) if path.name == "race.json" else resolved
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    store.put_immutable("bronze/race.json", b"unchanged")
+    assert store.get("bronze/race.json") == b"unchanged"
     assert not list(store.root.rglob("*.tmp"))
 
 
