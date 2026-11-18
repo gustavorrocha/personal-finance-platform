@@ -9,5 +9,7 @@ The [private spending slice](spending.md) combines the expense classification wo
 from Phase 4 with the first dashboard from Phase 5. It uses one ClickHouse spending
 view, deterministic classification and a small localhost UI. This slice focuses on
 posted expenses, category corrections, and review of ambiguous posted debits.
-Broader financial modeling, local LLM
-suggestions, investments and scheduling stay in the longer-term specification.
+The [local category suggestions slice](local-classification.md) starts Phase 6
+with optional Ollama setup, small batches, a bounded cache and explicit review.
+Broader financial modeling, investments and scheduling stay in the longer-term
+specification.

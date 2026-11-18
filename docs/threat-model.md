@@ -1,6 +1,6 @@
 # Threat model
 
-Assets include private secret files, financial data, migration integrity, backups and keys, and the Windows/WSL host. The acceptance environment uses synthetic fixtures. Trust boundaries include the operator to Pluggy, browser to localhost, frontend to API, API to ClickHouse, operator to Docker, container to volume, build to registry, and future provider text to an LLM. The local host user and Docker daemon hold privileged access.
+Assets include private secret files, financial data, migration integrity, backups and keys, and the Windows/WSL host. The acceptance environment uses synthetic fixtures. Trust boundaries include the operator to Pluggy, browser to localhost, frontend to API, API to ClickHouse and Ollama, operator to Docker, container to volume, and build to registry. The local host user and Docker daemon hold privileged access.
 
 | Threat | Control | Verification | Response |
 |---|---|---|---|
@@ -9,7 +9,8 @@ Assets include private secret files, financial data, migration integrity, backup
 | Host compromise | Non-root containers, dropped capabilities, no-new-privileges, ACLs, and no container Docker socket | Configuration tests and host permission review | Stop services, isolate the host, rotate keys |
 | Published payloads or logs | Log allowlists, generic errors, excluded secret files, and suppressed query/request logs | Synthetic-token scan and exception tests | Remove publication and revoke exposed secrets |
 | Malicious dependencies | Locked builds, minimal dependencies, npm install scripts disabled, synthetic CI | Dependency audits and lockfile review | Block the version, rebuild, and rotate if needed |
-| Prompt injection in descriptions | Treat text as untrusted and keep financial tools out of the future classifier | Prompt tests in Phase 6 | Quarantine the suggestion and review the classifier |
+| Prompt injection in merchant labels | Send cleaned labels as untrusted data, validate category output, and require approval through the separate rule endpoint | Invalid model output, suggestion-only API, and explicit approval tests | Discard the suggestion and review the classifier |
+| Model service network exposure | Isolate runtime Ollama on the internal AI network, disable cloud features, and download model files in a separate container | External TCP probe from the Ollama network namespace and port checks | Stop the model runtime and inspect its network and model configuration |
 | Backup exposure or tampering | AES-256-GCM, separate key file, and checksums | Round trip, wrong key, tampering, and isolated restore | Reject invalid backup and rotate compromised keys |
 | Frontend exposure or DNS rebinding | Loopback, TrustedHost, restrictive CORS, CSP | Host/Origin tests and live port inspection | Remove exposure and correct firewall/Compose settings |
 | Excess Docker Desktop/WSL privileges | Minimal volumes and no privileged mode, host networking, or Docker socket | Configuration tests and host group/WSL review | Revoke privileges and rebuild containers |

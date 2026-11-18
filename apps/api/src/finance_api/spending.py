@@ -1,5 +1,6 @@
 """Same-origin dashboard access to a narrow ClickHouse projection."""
 
+import asyncio
 import json
 from datetime import date
 from pathlib import Path
@@ -8,21 +9,20 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from .local_classifier import (
+    BATCH_LIMIT,
+    MODEL_TIMEOUT,
+    Category,
+    ClassifierUnavailable,
+    LocalClassifier,
+)
 
 router = APIRouter(prefix="/api/spending")
 ORIGINS = {"http://localhost:8080", "http://127.0.0.1:8080"}
 DEMO_ITEM = "77b7ff50-da90-5c0d-b938-f4af43c8b6de"
-Category = Literal[
-    "Groceries",
-    "Dining",
-    "Transport",
-    "Home",
-    "Shopping",
-    "Health",
-    "Leisure",
-    "Uncategorized",
-]
+classifier = LocalClassifier()
 
 
 class Rule(BaseModel):
@@ -39,6 +39,13 @@ class Review(BaseModel):
     item: UUID
     transaction: UUID
     decision: Literal["include", "exclude", "reset"]
+
+
+class SuggestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item: UUID
+    transactions: list[UUID] = Field(min_length=1, max_length=BATCH_LIMIT)
 
 
 async def dashboard_query(query: str, **parameters: str) -> list[dict]:
@@ -158,3 +165,30 @@ async def save_review(review: Review) -> Response:
         **scope,
     )
     return Response(status_code=204)
+
+
+@router.post("/suggestions", dependencies=[Depends(same_origin)])
+async def suggest_categories(request: SuggestionRequest):
+    ids = sorted(set(request.transactions))
+    rows = await dashboard_query(
+        "SELECT transaction_key AS id, merchant_label AS merchant "
+        "FROM analytics.spending_dashboard "
+        "WHERE item_key = {item:UUID} AND transaction_key IN {ids:Array(UUID)} "
+        "AND included AND category = 'Uncategorized' AND notEmpty(merchant_label) "
+        "ORDER BY transaction_key FORMAT JSONEachRow",
+        item=str(request.item),
+        ids="[" + ",".join(f"'{value}'" for value in ids) + "]",
+    )
+    async with httpx.AsyncClient(timeout=MODEL_TIMEOUT, trust_env=False) as client:
+        try:
+            async with asyncio.timeout(54):
+                categories = await classifier.suggest(client, [row["merchant"] for row in rows])
+        except (ClassifierUnavailable, TimeoutError):
+            raise HTTPException(503, "Local category suggestions are unavailable") from None
+    return {
+        "suggestions": [
+            {"id": row["id"], "category": category}
+            for row, category in zip(rows, categories, strict=True)
+            if category is not None
+        ]
+    }
