@@ -28,12 +28,16 @@ type Expense = {
   merchant: string;
   category: string;
 };
+type Review = Omit<Expense, "category"> & {
+  decision: "" | "include" | "exclude";
+};
 type Spending = {
   connections: Connection[];
   selected: Connection | null;
   month: string | null;
   totals: Total[];
   expenses: Expense[];
+  reviews: Review[];
   categories: string[];
 };
 
@@ -52,8 +56,10 @@ function App() {
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<"loadError" | "saveError">();
-  const [notice, setNotice] = useState(false);
+  const [error, setError] = useState<
+    "loadError" | "saveError" | "reviewError"
+  >();
+  const [notice, setNotice] = useState<"saved" | "reviewSaved">();
   const copy = messages[locale];
   const number = new Intl.NumberFormat(locale);
   const [activeYear, activeMonth] = (month || data?.month || "").split("-");
@@ -95,23 +101,32 @@ function App() {
     return () => request.abort();
   }, [item, month, revision]);
 
-  async function classify(transaction: string, category: string) {
+  async function save(
+    path: "rules" | "reviews",
+    transaction: string,
+    change:
+      { category: string } | { decision: "include" | "exclude" | "reset" },
+  ) {
     if (!data?.selected) return;
     setSaving(true);
     setError(undefined);
-    setNotice(false);
+    setNotice(undefined);
     try {
-      const response = await fetch("/api/spending/rules", {
+      const response = await fetch(`/api/spending/${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item: data.selected.id, transaction, category }),
+        body: JSON.stringify({
+          item: data.selected.id,
+          transaction,
+          ...change,
+        }),
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) throw new Error();
-      setNotice(true);
+      setNotice(path === "rules" ? "saved" : "reviewSaved");
       setRevision((value) => value + 1);
     } catch {
-      setError("saveError");
+      setError(path === "rules" ? "saveError" : "reviewError");
     } finally {
       setSaving(false);
     }
@@ -161,7 +176,7 @@ function App() {
                 onChange={(event) => {
                   setItem(event.target.value);
                   setMonth("");
-                  setNotice(false);
+                  setNotice(undefined);
                 }}
                 disabled={saving || !data?.connections.length}
               >
@@ -209,7 +224,7 @@ function App() {
             </label>
           </div>
         </div>
-        {notice && <p role="status">{copy.saved}</p>}
+        {notice && <p role="status">{copy[notice]}</p>}
         {error && (
           <p role="alert">
             {copy[error]}{" "}
@@ -230,30 +245,127 @@ function App() {
           <p className="empty">{copy.noSpending}</p>
         )}
         {!loading && !error && data?.selected && currencies.length > 0 && (
-          <>
-            <div className="summary">
-              {currencies.map((row) => (
-                <div key={row.currency}>
-                  <span>
-                    {copy.netSpending} · {row.currency}
-                  </span>
-                  <strong>
-                    {formatMoney(row.total, row.currency, locale)}
-                  </strong>
-                  <small>
-                    {number.format(Number(row.entries))}{" "}
-                    {Number(row.entries) === 1
-                      ? copy.postedEntry
-                      : copy.postedEntries}
-                  </small>
-                </div>
-              ))}
-              <div>
-                <span>{categoryLabel("Uncategorized", locale)}</span>
-                <strong>{number.format(uncategorized)}</strong>
-                <small>{copy.awaitingCategory}</small>
+          <div className="summary">
+            {currencies.map((row) => (
+              <div key={row.currency}>
+                <span>
+                  {copy.netSpending} · {row.currency}
+                </span>
+                <strong>{formatMoney(row.total, row.currency, locale)}</strong>
+                <small>
+                  {number.format(Number(row.entries))}{" "}
+                  {Number(row.entries) === 1
+                    ? copy.postedEntry
+                    : copy.postedEntries}
+                </small>
               </div>
+            ))}
+            <div>
+              <span>{categoryLabel("Uncategorized", locale)}</span>
+              <strong>{number.format(uncategorized)}</strong>
+              <small>{copy.awaitingCategory}</small>
             </div>
+          </div>
+        )}
+        {!loading && !error && data?.selected && (
+          <section className="panel" aria-labelledby="reviews">
+            <h2 id="reviews">{copy.reviewTitle}</h2>
+            {data.reviews.length === 0 ? (
+              <p>{copy.noReviews}</p>
+            ) : (
+              <>
+                <p>{copy.reviewHelp}</p>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">{copy.date}</th>
+                        <th scope="col">{copy.merchant}</th>
+                        <th scope="col">{copy.amount}</th>
+                        <th scope="col">{copy.reviewStatus}</th>
+                        <th scope="col">{copy.reviewAction}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.reviews.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>
+                            <time dateTime={entry.date}>
+                              {formatDate(entry.date, locale)}
+                            </time>
+                          </td>
+                          <td>{entry.merchant || copy.unknownMerchant}</td>
+                          <td>
+                            {formatMoney(entry.amount, entry.currency, locale)}
+                          </td>
+                          <td>
+                            {entry.decision === "include"
+                              ? copy.reviewIncluded
+                              : entry.decision === "exclude"
+                                ? copy.reviewExcluded
+                                : copy.reviewPending}
+                          </td>
+                          <td>
+                            <div
+                              className="review-actions"
+                              role="group"
+                              aria-label={
+                                entry.merchant || copy.unknownMerchant
+                              }
+                            >
+                              {entry.decision !== "include" && (
+                                <button
+                                  disabled={saving}
+                                  type="button"
+                                  onClick={() =>
+                                    void save("reviews", entry.id, {
+                                      decision: "include",
+                                    })
+                                  }
+                                >
+                                  {copy.includeExpense}
+                                </button>
+                              )}
+                              {entry.decision !== "exclude" && (
+                                <button
+                                  disabled={saving}
+                                  type="button"
+                                  onClick={() =>
+                                    void save("reviews", entry.id, {
+                                      decision: "exclude",
+                                    })
+                                  }
+                                >
+                                  {copy.excludeExpense}
+                                </button>
+                              )}
+                              {entry.decision && (
+                                <button
+                                  disabled={saving}
+                                  type="button"
+                                  onClick={() =>
+                                    void save("reviews", entry.id, {
+                                      decision: "reset",
+                                    })
+                                  }
+                                >
+                                  {copy.resetReview}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {data.reviews.length === 100 && <p>{copy.reviewLimit}</p>}
+              </>
+            )}
+          </section>
+        )}
+        {!loading && !error && data?.selected && currencies.length > 0 && (
+          <>
             <section className="panel" aria-labelledby="categories">
               <h2 id="categories">{copy.spendingByCategory}</h2>
               {currencies.map(({ currency }) => {
@@ -319,7 +431,9 @@ function App() {
                             disabled={saving || loading}
                             value={entry.category}
                             onChange={(event) =>
-                              void classify(entry.id, event.target.value)
+                              void save("rules", entry.id, {
+                                category: event.target.value,
+                              })
                             }
                           >
                             {data.categories.map((category) => (
