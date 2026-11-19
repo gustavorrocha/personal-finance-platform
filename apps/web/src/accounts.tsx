@@ -1,11 +1,6 @@
 import { AccountHistoryView } from "./account-history-view";
 import { summarizeBankBalances } from "./account-balance-summary";
-import {
-  formatMoney,
-  formatReportedValue,
-  messages,
-  type Locale,
-} from "./locale";
+import { formatReportedValue, messages, type Locale } from "./locale";
 import { SnapshotView, type Snapshot } from "./snapshot";
 
 type Account = {
@@ -64,7 +59,6 @@ function BankBalanceSummary({
 export function AccountsView({ locale }: { locale: Locale }) {
   const copy = messages[locale];
   const number = new Intl.NumberFormat(locale);
-  const balance = new Intl.NumberFormat(locale, { maximumFractionDigits: 12 });
   const observed = new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -120,11 +114,11 @@ export function AccountsView({ locale }: { locale: Locale }) {
                       <tr key={row.id}>
                         <th scope="row">{accountLabel(row, index)}</th>
                         <td>
-                          {row.balance === null
-                            ? copy.unavailable
-                            : row.currency
-                              ? formatMoney(row.balance, row.currency, locale)
-                              : balance.format(Number(row.balance))}
+                          {formatReportedValue(
+                            row.balance,
+                            locale,
+                            row.currency,
+                          )}
                         </td>
                         <td>{row.currency || copy.unavailable}</td>
                         <td>
