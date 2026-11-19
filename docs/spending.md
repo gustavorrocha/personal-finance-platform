@@ -29,8 +29,8 @@ The classifier maps recognized source categories and a few structured merchant
 keywords to a short list. The local operator can override these suggestions.
 Rule matching uses a fingerprint of normalized
 merchant text, with an individual transaction fallback for records lacking a
-usable label. The dashboard shows only structured merchant names when available.
-Raw provider descriptions remain in private Bronze.
+usable label. The dashboard shows the bank description when available, with
+the structured merchant name as a fallback. Raw payloads remain in private Bronze.
 
 ## Review a debit
 
@@ -78,3 +78,43 @@ verified review and reset through the dashboard API and denied the service
 account access to raw transaction rows and review history. Headless Chrome
 rendered the Portuguese review panel. Live-data validation and independent
 backup recovery remain pending.
+
+## Spending across connections
+
+Spending opens on **All imported connections** when imported data is available.
+Choose a connection to narrow the same monthly view. Synthetic demo data stays
+out of the combined totals and is hidden from selectors when imported
+connections are available. Totals are grouped by currency. Category edits,
+local suggestions, and debit review decisions use the transaction's own
+connection.
+
+Totals include posted credit-card purchases and bank debits with purchase
+evidence, such as a debit-card operation or a recognized spending category.
+Known transfers and card bill payments are excluded. Ambiguous debits such as
+PIX remain in Debit review until included. The review shows a recognized
+payment method when neither a bank description nor a merchant is available.
+
+**Pending card spending** shows purchases dated in the selected month that
+the provider still marks pending. They move into posted spending when a newer
+observation settles the same transaction. A positive card debit reported with
+card metadata can count as a purchase even when its operation code is
+`PAGAMENTO`. Explicit bill payments stay excluded.
+[Pluggy transaction statuses and direction](https://docs.pluggy.ai/en/docs/products/transactions)
+
+The monthly expense list displays posted and pending purchases. Search the
+bank description, merchant, or category across all pages without changing the
+monthly totals. The bank description and category remain in the original
+language. When present, the list shows the reported transaction time in UTC,
+original purchase date, installment number and count, and total purchase amount.
+Date-only and midnight timestamps are shown without an inferred time of payment.
+Transaction descriptions stay local and are excluded from both Ollama suggestions
+and interface translation.
+
+For data imported before the payment-method field was added, rebuild the local
+projections from existing captures after applying the migrations. This uses the
+existing local data and does not contact Pluggy.
+
+```powershell
+.\scripts\run_local.ps1
+uv run --frozen finance rebuild-warehouse --from-bronze
+```

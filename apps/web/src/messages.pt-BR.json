@@ -102,7 +102,21 @@
     "investmentOther": "f97e9da0e3b879f0a9df979ae260a5f7e1371edb127c1862d4f861981166cdc1",
     "reportedInvestmentTotals": "47d1f2066a5a9a4b534e1a3b3f80afcf393d9979754b6bfee53c4d5d2ebe5831",
     "incompleteInvestmentTotals": "ff679858a4427e29414db37c4a9a4fad5f6e2adbe9e6e92cb5839ffa12fb83aa",
-    "someReferenceDatesUnavailable": "5fca5171b3e1e62eda0619ba4b67be6a02f7dff0b3fb95b9c9379999671d7a48"
+    "someReferenceDatesUnavailable": "5fca5171b3e1e62eda0619ba4b67be6a02f7dff0b3fb95b9c9379999671d7a48",
+    "allConnections": "9f34ee2cad5c8caf6a4d03279c9e6ef7447c2aa09ecfa3933af73c6bf564cea5",
+    "transactionDetails": "e208c466f923b935587eb94793b4f6f92567ef35aeabaa5f55ee638807864c29",
+    "pendingCardSpending": "20261a7a68e8421aa98578f7dcaa4e3db277656f6e5ee6c55a727320b08bdfcc",
+    "reportedTime": "977287b0f0e74e838429b288c619448cac668c06dc9e4df3a075f1eb463056e7",
+    "originalPurchaseDate": "a64e1cdee458d7934bbd17c63b295e6687c880e4a21e01a169282a0f2fb4b23d",
+    "installment": "9c022e77fbe9333d25bb966a5b24bdaac760fa4ac6e4ff762ef26960f84bc8b7",
+    "installmentTotal": "3e071e9df50a47924dfd93e5ed708c74a773dc00245d3035fb9d3d46bcc40d66",
+    "postedStatus": "afd80c5a1b84c378544290379f7195d17d994e3a6e30675372c6dc58446e0614",
+    "pendingStatus": "331551b0de4157c9abc7b72b61b96a2a928fd6db3cdf029c1fc44b08ad633aa6",
+    "searchExpenses": "33c7de65d0303238bc5f28340ee0bfb99f445f724fb20d91325b98e430eb8a2c",
+    "previousPage": "1208ec01f223c616b981ee76749e4f435f9c6bc2998d6cc43a9f59d71bd6f697",
+    "nextPage": "c08ac736a5e29c291b681cbdc15f06901a735f28d2e04645b92cf331861cb8c0",
+    "noMatchingExpenses": "30fe05ec87951ecdc74c6129b97bf949727d22047b15dcfb735a5d62e59e4c9d",
+    "bankCategory": "f94cc13ad63585dddcbf78278bda09c822c988c4e7bd6add41a90cab54bd71ad"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -207,6 +221,20 @@
     "investmentOther": "Outro",
     "reportedInvestmentTotals": "Saldos líquidos de investimentos por moeda",
     "incompleteInvestmentTotals": "Algumas posições estão sem saldo líquido ou moeda informada.",
-    "someReferenceDatesUnavailable": "Algumas datas de referência não estão disponíveis."
+    "someReferenceDatesUnavailable": "Algumas datas de referência não estão disponíveis.",
+    "allConnections": "Todas as conexões importadas",
+    "transactionDetails": "Detalhes da transação",
+    "pendingCardSpending": "Gastos pendentes no cartão",
+    "reportedTime": "Horário informado (UTC)",
+    "originalPurchaseDate": "Data original da compra",
+    "installment": "Parcela",
+    "installmentTotal": "Valor total da compra",
+    "postedStatus": "Confirmado",
+    "pendingStatus": "Pendente",
+    "searchExpenses": "Buscar descrições ou categorias",
+    "previousPage": "Página anterior",
+    "nextPage": "Próxima página",
+    "noMatchingExpenses": "Nenhuma despesa encontrada.",
+    "bankCategory": "Categoria informada"
   }
 }

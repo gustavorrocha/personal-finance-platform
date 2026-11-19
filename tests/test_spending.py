@@ -1,15 +1,45 @@
 import json
+from datetime import timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from finance_api import spending
 from finance_api.main import app
+from finance_ingestion.collection import entity_key, item_key
+from finance_ingestion.silver import transaction_details
 from finance_ingestion.spending import spending_fields
 from finance_ingestion.spending_demo import load_demo
+from finance_lake.bronze import CapturePage
+from finance_lake.manifest import json_bytes
 
+from tests.test_provider_ingestion import CARD, ITEM, NEW_ITEM, WHEN
 from tests.test_provider_ingestion import isolated_warehouse as isolated_warehouse
 from tests.test_provider_ingestion import pipeline as pipeline
+
+
+def test_transaction_details_preserve_bank_text_and_distinguish_reported_time():
+    details = transaction_details(
+        {
+            "description": "Normalized description",
+            "descriptionRaw": "COMPRA *Loja <&>",
+            "date": "2026-11-17T21:15:00-03:00",
+            "creditCardMetadata": {
+                "purchaseDate": "2026-10-17",
+                "installmentNumber": 2,
+                "totalInstallments": 5,
+                "totalAmount": 200,
+            },
+        }
+    )
+    assert details["bank_description"] == "COMPRA *Loja <&>"
+    assert details["transaction_time"] == "2026-11-18 00:15:00.000000"
+    assert details["original_purchase_date"] == "2026-10-17"
+    assert (details["installment_number"], details["total_installments"]) == (2, 5)
+    assert Decimal(details["installment_total_amount"]) == 200
+    for missing_time in ("2026-11-17", "2026-11-17T00:00:00Z"):
+        assert transaction_details({"date": missing_time})["transaction_time"] is None
 
 
 def test_spending_requires_purchase_evidence_and_excludes_transfers_and_settlements():
@@ -21,6 +51,10 @@ def test_spending_requires_purchase_evidence_and_excludes_transfers_and_settleme
     for operation in ("TRANSFER", "PAGAMENTO_FATURA"):
         assert spending_fields({**card, "operationType": operation}, "tx")["spending_kind"] == ""
     for operation in ("PIX", "TED"):
+        assert (
+            spending_fields({**debit, "operationType": operation}, "tx")["spending_operation"]
+            == operation
+        )
         assert (
             spending_fields({**debit, "operationType": operation}, "tx")["spending_kind"]
             == "review"
@@ -37,6 +71,10 @@ def test_spending_requires_purchase_evidence_and_excludes_transfers_and_settleme
         spending_fields(refund, "tx")["merchant_key"] == spending_fields(card, "tx")["merchant_key"]
     )
     assert "Synthetic Market" not in str(spending_fields(card, "tx"))
+    assert (
+        spending_fields({**debit, "operationType": "private-text"}, "tx")["spending_operation"]
+        == ""
+    )
     cafe = {"type": "DEBIT", "merchant": {"name": "Synthetic Café"}}
     assert spending_fields(cafe, "tx")["spending_category"] == "Dining"
 
@@ -85,6 +123,148 @@ def test_dashboard_describes_demo_without_relying_on_english_labels(monkeypatch)
         assert [row["is_demo"] for row in page["connections"]] == [True, False]
 
 
+def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
+    isolated_warehouse, monkeypatch
+):
+    silver = isolated_warehouse()
+    load_demo(silver)
+
+    def observe(source, account_type, records, observed=WHEN):
+        item = item_key(source)
+        rows = [
+            {
+                "id": str(uuid4()),
+                "accountId": CARD,
+                "type": "DEBIT",
+                "status": "POSTED",
+                "date": "2024-11-10",
+                "currencyCode": "BRL",
+                **record,
+            }
+            for record in records
+        ]
+        manifest = silver.lake.commit(
+            run_id=uuid4(),
+            retrieved_at=observed,
+            item_alias=f"item-{item.hex}",
+            capture_kind="full",
+            payloads=[
+                CapturePage(
+                    "items",
+                    json_bytes({"id": source, "status": "UPDATED", "connector": {"id": 123}}),
+                ),
+                CapturePage(
+                    "accounts", json_bytes({"results": [{"id": CARD, "type": account_type}]})
+                ),
+                CapturePage(
+                    "transactions",
+                    json_bytes({"results": rows}),
+                    entity_key(item, "accounts", CARD),
+                ),
+            ],
+        )
+        silver.replay(manifest.run_id)
+
+    observe(
+        ITEM,
+        "BANK",
+        [
+            {"amount": 10, "operationType": "CARTAO"},
+            {"amount": 100, "operationType": "TRANSFERENCIA_MESMA_INSTITUICAO"},
+            {
+                "amount": 7,
+                "paymentData": {"paymentMethod": "PIX"},
+                "description": "private details",
+            },
+        ],
+    )
+    pending_purchase = {
+        "id": str(uuid4()),
+        "amount": 8,
+        "operationType": "PAGAMENTO",
+        "creditCardMetadata": {"installmentNumber": 2, "totalInstallments": 4},
+        "status": "PENDING",
+        "descriptionRaw": "COMPRA *Loja de teste",
+        "date": "2024-11-10T16:25:00Z",
+        "category": "Office supplies",
+    }
+    observe(
+        NEW_ITEM,
+        "CREDIT",
+        [
+            {"amount": 25, "operationType": "PAGAMENTO", "creditCardMetadata": {}},
+            {"amount": 55, "type": "CREDIT", "operationType": "PAGAMENTO_FATURA"},
+            pending_purchase,
+            {**pending_purchase, "id": str(uuid4()), "amount": -9},
+            {**pending_purchase, "id": str(uuid4()), "amount": 60, "type": "CREDIT"},
+            {
+                **pending_purchase,
+                "id": str(uuid4()),
+                "amount": 90,
+                "operationType": "PAGAMENTO_FATURA",
+            },
+        ],
+    )
+
+    async def execute(query, **parameters):
+        return [json.loads(line) for line in silver.execute(query, **parameters).splitlines()]
+
+    def total(page):
+        return Decimal(next(row["total"] for row in page["totals"] if row["bucket"] is None))
+
+    monkeypatch.setattr(spending, "dashboard_query", execute)
+    path = "/api/spending"
+    with TestClient(app) as client:
+        result = client.get(path, params={"item": "all"})
+        assert result.status_code == 200
+        page = result.json()
+        assert page["selected"]["id"] == "all"
+        assert page["month"] == "2024-11"
+        assert total(page) == Decimal(35)
+        assert Decimal(page["pending_totals"][0]["total"]) == Decimal(8)
+        assert page["pending_by_category"][0]["bucket"] == "Office supplies"
+        assert {row["item"] for row in page["expenses"]} == {
+            str(item_key(s)) for s in (ITEM, NEW_ITEM)
+        }
+        review = page["reviews"][0]
+        assert review["operation"] == "PIX" and review["merchant"] == ""
+        assert review["description"] == "private details"
+        searched = client.get(path, params={"item": "all", "search": "office supplies"}).json()
+        assert total(searched) == Decimal(35)
+        assert len(searched["expenses"]) == 1
+        purchase = searched["expenses"][0]
+        assert purchase["description"] == "COMPRA *Loja de teste"
+        assert purchase["status"] == "PENDING"
+        assert purchase["category"] == "Office supplies"
+        assert purchase["transaction_time"] == "2024-11-10T16:25:00.000000Z"
+        assert (purchase["installment_number"], purchase["total_installments"]) == (2, 4)
+        monkeypatch.setattr(spending, "EXPENSE_PAGE_SIZE", 1)
+        first = client.get(path, params={"item": "all"}).json()
+        second = client.get(path, params={"item": "all", "page": 2}).json()
+        assert first["has_more_expenses"]
+        assert first["expenses"][0]["id"] != second["expenses"][0]["id"]
+        monkeypatch.setattr(spending, "EXPENSE_PAGE_SIZE", 100)
+        response = client.post(
+            path + "/reviews",
+            headers={"Origin": "http://127.0.0.1:8080"},
+            json={"item": review["item"], "transaction": review["id"], "decision": "include"},
+        )
+        assert response.status_code == 204
+        assert total(client.get(path, params={"item": "all"}).json()) == Decimal(42)
+        assert total(client.get(path, params={"item": str(item_key(NEW_ITEM))}).json()) == Decimal(
+            25
+        )
+        observe(
+            NEW_ITEM,
+            "CREDIT",
+            [{**pending_purchase, "status": "POSTED"}],
+            observed=WHEN + timedelta(days=1),
+        )
+        settled = client.get(path, params={"item": "all"}).json()
+        assert total(settled) == Decimal(50)
+        assert settled["pending_totals"] == []
+
+
 def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_warehouse, monkeypatch):
     silver = isolated_warehouse()
     assert load_demo(silver) == 16
@@ -101,7 +281,7 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         assert page["selected"]["is_demo"] is True
         net = next(row for row in page["totals"] if row["bucket"] is None)
         assert Decimal(net["total"]) == Decimal("257.03")
-        assert len(page["expenses"]) == 7
+        assert len(page["expenses"]) == 8
         eligible = next(row for row in page["expenses"] if row["merchant"] == "Corner Bookshop")
         classified = next(row for row in page["expenses"] if row["merchant"] == "West Market")
 
@@ -124,8 +304,11 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         assert suggested.json() == {"suggestions": [{"id": eligible["id"], "category": "Shopping"}]}
         assert client.get("/api/spending").json() == page
         assert [row["merchant"] for row in page["reviews"]] == ["Harbor Books"]
-        assert {row["merchant"] for row in page["expenses"]}.isdisjoint(
-            {"Museum Studio", "Card statement"}
+        assert [row["operation"] for row in page["reviews"]] == ["PIX"]
+        assert "Card statement" not in {row["merchant"] for row in page["expenses"]}
+        assert (
+            next(row for row in page["expenses"] if row["merchant"] == "Museum Studio")["status"]
+            == "PENDING"
         )
         row = next(row for row in page["expenses"] if row["merchant"] == "West Market")
         response = client.post(

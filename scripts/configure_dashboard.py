@@ -39,6 +39,7 @@ def configure(private: Path) -> None:
         "<query>GRANT SELECT ON analytics.spending_dashboard</query>"
         "<query>GRANT SELECT ON analytics.accounts_dashboard</query>"
         "<query>GRANT SELECT ON analytics.account_balance_history</query>"
+        "<query>GRANT SELECT ON analytics.pending_card_spending</query>"
         "<query>GRANT SELECT ON analytics.investments_dashboard</query>"
         "<query>GRANT INSERT ON core.spending_rules</query>"
         "<query>GRANT INSERT ON core.spending_reviews</query>"

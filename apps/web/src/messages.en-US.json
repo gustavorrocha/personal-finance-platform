@@ -101,5 +101,19 @@
   "investmentOther": "Other",
   "reportedInvestmentTotals": "Reported investment net balances by currency",
   "incompleteInvestmentTotals": "Some positions have no reported net balance or currency.",
-  "someReferenceDatesUnavailable": "Some reference dates are unavailable."
+  "someReferenceDatesUnavailable": "Some reference dates are unavailable.",
+  "allConnections": "All imported connections",
+  "transactionDetails": "Transaction details",
+  "pendingCardSpending": "Pending card spending",
+  "reportedTime": "Reported time (UTC)",
+  "originalPurchaseDate": "Original purchase date",
+  "installment": "Installment",
+  "installmentTotal": "Total purchase amount",
+  "postedStatus": "Posted",
+  "pendingStatus": "Pending",
+  "searchExpenses": "Search descriptions or categories",
+  "previousPage": "Previous page",
+  "nextPage": "Next page",
+  "noMatchingExpenses": "No matching expenses.",
+  "bankCategory": "Bank category"
 }

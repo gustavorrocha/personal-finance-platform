@@ -23,6 +23,13 @@ router = APIRouter(prefix="/api/spending")
 ORIGINS = {"http://localhost:8080", "http://127.0.0.1:8080"}
 DEMO_ITEM = "77b7ff50-da90-5c0d-b938-f4af43c8b6de"
 classifier = LocalClassifier()
+EXPENSE_PAGE_SIZE = 100
+TRANSACTION_DETAILS = (
+    "description, bank_category, "
+    "concat(replaceOne(toString(transaction_time), ' ', 'T'), 'Z') AS transaction_time, "
+    "original_purchase_date, installment_number, total_installments, "
+    "toString(installment_total_amount) AS installment_total_amount "
+)
 
 
 class Rule(BaseModel):
@@ -63,19 +70,34 @@ async def dashboard_query(query: str, **parameters: str) -> list[dict]:
 
 @router.get("")
 async def spending(
-    item: UUID | None = None,
+    item: UUID | Literal["all"] | None = None,
     month: Annotated[str | None, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")] = None,
+    page: Annotated[int, Query(ge=1, le=1000)] = 1,
+    search: Annotated[str, Query(max_length=120)] = "",
 ):
     if month is not None and not 1970 <= int(month[:4]) <= 2148:
         raise HTTPException(422, "Unsupported month")
     connections = await dashboard_query(
-        "SELECT item_key AS id, formatDateTime(max(economic_date), '%Y-%m') AS latest_month "
-        "FROM analytics.spending_dashboard GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
+        "SELECT item_key AS id, formatDateTime("
+        "if(countIf(posted) > 0, maxIf(economic_date, posted), "
+        "least(max(economic_date), today())), "
+        "'%Y-%m') AS latest_month "
+        "FROM (SELECT item_key, economic_date, true AS posted FROM analytics.spending_dashboard "
+        "UNION ALL SELECT item_key, economic_date, false AS posted "
+        "FROM analytics.pending_card_spending) "
+        "GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
     )
     for index, row in enumerate(connections, start=1):
         row["is_demo"] = row["id"] == DEMO_ITEM
         row["label"] = "Synthetic demo" if row["is_demo"] else f"Connection {index}"
-    if item is None:
+    combined = item == "all" and any(not row["is_demo"] for row in connections)
+    if combined:
+        selected = {
+            "id": "all",
+            "is_demo": False,
+            "latest_month": max(row["latest_month"] for row in connections if not row["is_demo"]),
+        }
+    elif item is None or item == "all":
         selected = connections[0] if len(connections) == 1 else None
     else:
         selected = next((row for row in connections if row["id"] == str(item)), None)
@@ -86,7 +108,10 @@ async def spending(
         "selected": selected,
         "month": month,
         "totals": [],
+        "pending_totals": [],
+        "pending_by_category": [],
         "expenses": [],
+        "has_more_expenses": False,
         "reviews": [],
         "categories": get_args(Category),
     }
@@ -94,8 +119,14 @@ async def spending(
         return result
     month = month or selected["latest_month"]
     first = date.fromisoformat(f"{month}-01")
-    filters = {"item": selected["id"], "start": first.isoformat()}
-    where = "WHERE item_key = {item:UUID} AND toStartOfMonth(economic_date) = {start:Date} "
+    filters = {"start": first.isoformat()}
+    if combined:
+        filters["demo"] = DEMO_ITEM
+        scope = "item_key != {demo:UUID}"
+    else:
+        filters["item"] = selected["id"]
+        scope = "item_key = {item:UUID}"
+    where = f"WHERE {scope} AND toStartOfMonth(economic_date) = {{start:Date}} "
     result["month"] = month
     result["totals"] = await dashboard_query(
         "SELECT currency, if(grouping(category) = 1, NULL, category) AS bucket, "
@@ -105,16 +136,50 @@ async def spending(
         "ORDER BY currency, bucket NULLS FIRST FORMAT JSONEachRow",
         **filters,
     )
-    result["expenses"] = await dashboard_query(
-        "SELECT transaction_key AS id, economic_date AS date, currency, "
-        "toString(net_amount) AS amount, merchant_label AS merchant, category "
-        f"FROM analytics.spending_dashboard {where}AND included "
-        "ORDER BY date DESC, transaction_key DESC LIMIT 100 FORMAT JSONEachRow",
+    pending = await dashboard_query(
+        "SELECT currency, if(grouping(category) = 1, NULL, category) AS bucket, "
+        "toString(sum(amount)) AS total, count() AS entries "
+        f"FROM analytics.pending_card_spending {where}"
+        "GROUP BY GROUPING SETS ((currency, category), (currency)) "
+        "ORDER BY currency, bucket NULLS FIRST FORMAT JSONEachRow",
         **filters,
     )
+    result["pending_totals"] = [
+        {key: value for key, value in row.items() if key != "bucket"}
+        for row in pending
+        if row["bucket"] is None
+    ]
+    result["pending_by_category"] = [row for row in pending if row["bucket"] is not None]
+    search = search.strip()
+    expense_filters = dict(filters, offset=str((page - 1) * EXPENSE_PAGE_SIZE))
+    search_filter = ""
+    if search:
+        expense_filters["search"] = search
+        search_filter = (
+            "WHERE positionCaseInsensitiveUTF8(description, {search:String}) > 0 "
+            "OR positionCaseInsensitiveUTF8(merchant, {search:String}) > 0 "
+            "OR positionCaseInsensitiveUTF8(category, {search:String}) > 0 "
+            "OR positionCaseInsensitiveUTF8(bank_category, {search:String}) > 0 "
+        )
+    details = (
+        "item_key AS item, transaction_key AS id, economic_date AS date, currency, "
+        "merchant_label AS merchant, category, " + TRANSACTION_DETAILS
+    )
+    expenses = await dashboard_query(
+        f"SELECT * FROM (SELECT {details}, toString(net_amount) AS amount, "
+        f"'POSTED' AS status FROM analytics.spending_dashboard {where}AND included "
+        f"UNION ALL SELECT {details}, toString(amount) AS amount, "
+        f"'PENDING' AS status FROM analytics.pending_card_spending {where}) "
+        f"{search_filter}ORDER BY date DESC, transaction_time DESC, item, id "
+        f"LIMIT {EXPENSE_PAGE_SIZE + 1} OFFSET {{offset:UInt32}} FORMAT JSONEachRow",
+        **expense_filters,
+    )
+    result["expenses"] = expenses[:EXPENSE_PAGE_SIZE]
+    result["has_more_expenses"] = len(expenses) > EXPENSE_PAGE_SIZE
     result["reviews"] = await dashboard_query(
-        "SELECT transaction_key AS id, economic_date AS date, currency, "
-        "toString(net_amount) AS amount, merchant_label AS merchant, decision "
+        "SELECT item_key AS item, transaction_key AS id, economic_date AS date, currency, "
+        "toString(net_amount) AS amount, merchant_label AS merchant, operation, decision, "
+        f"{TRANSACTION_DETAILS}"
         f"FROM analytics.spending_dashboard {where}AND reviewable "
         "ORDER BY (decision != ''), date DESC, transaction_key DESC LIMIT 100 FORMAT JSONEachRow",
         **filters,
