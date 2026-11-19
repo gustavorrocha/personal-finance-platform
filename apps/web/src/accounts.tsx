@@ -1,5 +1,11 @@
 import { AccountHistoryView } from "./account-history-view";
-import { formatMoney, messages, type Locale } from "./locale";
+import { summarizeBankBalances } from "./account-balance-summary";
+import {
+  formatMoney,
+  formatReportedValue,
+  messages,
+  type Locale,
+} from "./locale";
 import { SnapshotView, type Snapshot } from "./snapshot";
 
 type Account = {
@@ -10,6 +16,32 @@ type Account = {
   observed_at: string;
 };
 type AccountSnapshot = Snapshot & { accounts: Account[] };
+
+function BankBalanceSummary({
+  accounts,
+  locale,
+}: {
+  accounts: Account[];
+  locale: Locale;
+}) {
+  const { totals, unavailable } = summarizeBankBalances(accounts);
+  if (totals.length === 0 && unavailable === 0) return null;
+  const copy = messages[locale];
+  return (
+    <section aria-labelledby="bank-balances">
+      <h3 id="bank-balances">{copy.reportedBankTotals}</h3>
+      <dl>
+        {totals.map(({ currency, balance }) => (
+          <div key={currency}>
+            <dt>{currency}</dt>
+            <dd>{formatReportedValue(balance, locale)}</dd>
+          </div>
+        ))}
+      </dl>
+      {unavailable > 0 && <p>{copy.incompleteBankTotals}</p>}
+    </section>
+  );
+}
 
 export function AccountsView({ locale }: { locale: Locale }) {
   const copy = messages[locale];
@@ -45,6 +77,12 @@ export function AccountsView({ locale }: { locale: Locale }) {
           <section className="panel" aria-labelledby="balances">
             <h2 id="balances">{copy.reportedBalances}</h2>
             <p>{copy.balanceHelp}</p>
+            {!snapshot.truncated && (
+              <BankBalanceSummary
+                accounts={snapshot.accounts}
+                locale={locale}
+              />
+            )}
             {snapshot.accounts.length === 0 ? (
               <p>{copy.noAccounts}</p>
             ) : (
