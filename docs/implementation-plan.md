@@ -7,7 +7,8 @@ and [provider ingestion and Silver replay](provider-ingestion.md).
 
 The [holdings dashboard](holdings.md) displays read-only account and investment
 snapshots in English and Brazilian Portuguese. Both use Silver observations and
-keep connections separate.
+keep connections separate. The account history API exposes past published balance
+observations for one account at a time.
 
 The [private spending slice](spending.md) combines the expense classification work
 from Phase 4 with the first dashboard from Phase 5. It uses one ClickHouse spending

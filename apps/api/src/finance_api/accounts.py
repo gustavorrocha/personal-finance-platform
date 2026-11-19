@@ -1,8 +1,9 @@
-"""Read-only, connection-scoped account snapshots."""
+"""Read-only, connection-scoped account snapshots and balance history."""
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from .spending import DEMO_ITEM, dashboard_query
 
@@ -46,4 +47,27 @@ async def account_snapshot(item: UUID | None = None):
         "selected": selected,
         "accounts": rows[:SNAPSHOT_LIMIT],
         "truncated": len(rows) > SNAPSHOT_LIMIT,
+    }
+
+
+@router.get("/api/accounts/history")
+async def account_history(
+    item: UUID,
+    account: UUID,
+    limit: Annotated[int, Query(ge=1, le=SNAPSHOT_LIMIT)] = 90,
+):
+    rows = await dashboard_query(
+        "SELECT concat(replaceOne(toString(history.observed_at), ' ', 'T'), 'Z') AS observed_at, "
+        "currency, toString(balance) AS balance FROM analytics.account_balance_history AS history "
+        "WHERE item_key = {item:UUID} AND account_key = {account:UUID} "
+        "ORDER BY history.observed_at DESC LIMIT {limit:UInt16} FORMAT JSONEachRow",
+        item=str(item),
+        account=str(account),
+        limit=str(limit + 1),
+    )
+    if not rows:
+        raise HTTPException(404, "Account has no reported history in this connection")
+    return {
+        "observations": rows[:limit],
+        "truncated": len(rows) > limit,
     }

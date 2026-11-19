@@ -41,6 +41,34 @@ tests. A Docker smoke test verified the localhost proxy and restricted grants.
 Headless Chrome verified that the Portuguese Accounts view displays the demo
 balances and marks the missing USD balance as unavailable.
 
+### Account balance history API
+
+Use the pseudonymous connection and account IDs from `GET /api/accounts` to
+request recent balance observations for one account. The endpoint returns up to
+90 rows by default, newest first. Set `limit` from 1 to 200 and check `truncated`
+for older observations. An account outside the requested connection returns 404.
+
+Each row contains the UTC observation time, currency, and balance as a decimal
+string or null. Two publications for the same timestamp contribute one row.
+The history preserves reported zeros and unavailable values and contains only
+published observations. Dates without observations do not get rows.
+
+After loading the Accounts demo above, try the history endpoint with its first
+account.
+
+```powershell
+$accounts = Invoke-RestMethod 'http://127.0.0.1:8080/api/accounts'
+$item = ($accounts.connections | Where-Object { $_.is_demo }).id
+$snapshot = Invoke-RestMethod "http://127.0.0.1:8080/api/accounts?item=$item"
+$account = $snapshot.accounts[0].id
+Invoke-RestMethod "http://127.0.0.1:8080/api/accounts/history?item=$item&account=$account"
+```
+
+Synthetic Bronze replay verifies exact balances, missing values, timestamp
+deduplication, unpublished rows, and connection isolation. A separate Docker
+check verifies the localhost route and the dashboard role's read access to the
+history view. ClickHouse denies that role access to the underlying table.
+
 ## Investments
 
 Open **Investments** (**Investimentos**) and select a connection. The dashboard
