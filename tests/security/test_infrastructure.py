@@ -59,7 +59,7 @@ def test_secrets_are_files_and_no_remote_ai():
     assert set(COMPOSE["services"]["api"]["secrets"]) == {"api_password", "dashboard_password"}
     assert {
         "source": "dashboard_user",
-        "target": "/etc/clickhouse-server/users.d/spending-dashboard.xml",
+        "target": "/etc/clickhouse-server/users.d/account-history-dashboard.xml",
     } in COMPOSE["services"]["clickhouse"]["secrets"]
     assert all(
         s["file"].startswith("${FINANCE_PRIVATE_DIR}/secrets/") for s in COMPOSE["secrets"].values()
@@ -78,6 +78,14 @@ def test_optional_gui_exposes_only_the_loopback_http_proxy():
     assert proxy["networks"] == ["gui", "data"]
     assert proxy["read_only"] and proxy["cap_drop"] == ["ALL"]
     assert "clickhouse-gui" not in COMPOSE["services"]
+
+
+def test_recovery_override_only_changes_clickhouse_storage():
+    override = yaml.safe_load((ROOT / "infra/compose.volume.yaml").read_text())
+    assert override["services"] == {
+        "clickhouse": {"volumes": ["clickhouse-storage:/var/lib/clickhouse"]}
+    }
+    assert override["volumes"]["clickhouse-storage"]["external"] is True
 
 
 def test_clickhouse_local_admin_and_no_sensitive_query_logs():

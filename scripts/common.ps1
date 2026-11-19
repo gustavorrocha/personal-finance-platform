@@ -24,7 +24,27 @@ function Import-LocalConfig {
     }
 }
 
+function Get-ComposeArguments {
+    param([switch]$WithGui)
+    $compose = @('compose', '--env-file', '.env', '-f', 'infra/compose.yaml')
+    $volumeMarker = Join-Path $env:FINANCE_PRIVATE_DIR '.finance-clickhouse-volume'
+    if (Test-Path -LiteralPath $volumeMarker) {
+        $entry = Get-Item -LiteralPath $volumeMarker -Force
+        if ($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Expected a regular ClickHouse volume marker in the private directory.'
+        }
+        $volumeName = (Get-Content -LiteralPath $volumeMarker -Raw).Trim()
+        if ($volumeName -cnotmatch '^personal-finance-clickhouse-[a-z0-9][a-z0-9-]*$') {
+            throw 'Invalid ClickHouse recovery volume name.'
+        }
+        $env:FINANCE_CLICKHOUSE_VOLUME = $volumeName
+        $compose += @('-f', 'infra/compose.volume.yaml')
+    }
+    if ($WithGui) { $compose += @('-f', 'infra/compose.gui.yaml') }
+    return $compose
+}
+
 function Invoke-Compose {
     param([string[]]$ComposeArguments)
-    Invoke-Checked docker (@('compose', '--env-file', '.env', '-f', 'infra/compose.yaml') + $ComposeArguments)
+    Invoke-Checked docker ((Get-ComposeArguments) + $ComposeArguments)
 }
