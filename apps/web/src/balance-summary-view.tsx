@@ -1,5 +1,10 @@
 import type { BalanceTotals } from "./balance-summary";
-import { formatReportedValue, messages, type Locale } from "./locale";
+import {
+  formatDate,
+  formatReportedValue,
+  messages,
+  type Locale,
+} from "./locale";
 
 export function BalanceSummary({
   summary,
@@ -21,7 +26,7 @@ export function BalanceSummary({
     <section aria-labelledby="balance-totals">
       <h3 id="balance-totals">{title}</h3>
       <dl>
-        {totals.map(({ currency, balance, oldest, newest }) => (
+        {totals.map(({ currency, balance, oldest, newest, referenceDates }) => (
           <div key={currency}>
             <dt>{currency}</dt>
             <dd>{formatReportedValue(balance, locale)}</dd>
@@ -41,6 +46,35 @@ export function BalanceSummary({
                 )}
               </small>
             </dd>
+            {referenceDates && (
+              <dd>
+                <small>
+                  {copy.referenceDate}{" "}
+                  {referenceDates.oldest ? (
+                    <time dateTime={referenceDates.oldest}>
+                      {formatDate(referenceDates.oldest, locale)}
+                    </time>
+                  ) : (
+                    copy.unavailable
+                  )}
+                  {referenceDates.newest &&
+                    referenceDates.oldest !== referenceDates.newest && (
+                      <>
+                        {" – "}
+                        <time dateTime={referenceDates.newest}>
+                          {formatDate(referenceDates.newest, locale)}
+                        </time>
+                      </>
+                    )}
+                  {referenceDates.oldest && referenceDates.missing && (
+                    <>
+                      {" · "}
+                      {copy.someReferenceDatesUnavailable}
+                    </>
+                  )}
+                </small>
+              </dd>
+            )}
           </div>
         ))}
       </dl>

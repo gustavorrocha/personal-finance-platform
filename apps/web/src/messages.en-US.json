@@ -100,5 +100,6 @@
   "investment_SECURITY": "Security",
   "investmentOther": "Other",
   "reportedInvestmentTotals": "Reported investment net balances by currency",
-  "incompleteInvestmentTotals": "Some positions have no reported net balance or currency."
+  "incompleteInvestmentTotals": "Some positions have no reported net balance or currency.",
+  "someReferenceDatesUnavailable": "Some reference dates are unavailable."
 }
