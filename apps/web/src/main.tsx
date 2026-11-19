@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
+import { InvestmentsView } from "./investments";
 import {
   categoryLabel,
   deviceLocale,
@@ -47,8 +48,9 @@ const years = Array.from(
   (_, index) => 2148 - index,
 );
 
-function currentView() {
-  return window.location.hash === "#accounts" ? "accounts" : "spending";
+function currentView(): "accounts" | "investments" | "spending" {
+  const view = window.location.hash.slice(1);
+  return view === "accounts" || view === "investments" ? view : "spending";
 }
 
 function App() {
@@ -84,7 +86,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = `${view === "accounts" ? copy.accounts : copy.title} | ${copy.brand}`;
+    document.title = `${view === "spending" ? copy.title : copy[view]} | ${copy.brand}`;
   }, [locale, copy, view]);
 
   function changeLanguage(value: LanguagePreference) {
@@ -248,8 +250,15 @@ function App() {
         >
           {copy.accounts}
         </a>
+        <a
+          href="#investments"
+          aria-current={view === "investments" ? "page" : undefined}
+        >
+          {copy.investments}
+        </a>
       </nav>
       {view === "accounts" && <AccountsView locale={locale} />}
+      {view === "investments" && <InvestmentsView locale={locale} />}
       <main className="frame" hidden={view !== "spending"} aria-busy={loading}>
         <div className="intro">
           <h1>{copy.title}</h1>

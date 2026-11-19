@@ -5,9 +5,9 @@ The [full implementation plan](plano_financas_datalake_clickhouse.md) records th
 Phases 0–3 are merged, including the [read-only provider coverage audit](provider-coverage.md)
 and [provider ingestion and Silver replay](provider-ingestion.md).
 
-The [holdings dashboard](holdings.md) displays read-only account snapshots and
-exposes the latest reported investment positions through a local read-only API.
-Both use Silver observations and keep connections separate.
+The [holdings dashboard](holdings.md) displays read-only account and investment
+snapshots in English and Brazilian Portuguese. Both use Silver observations and
+keep connections separate.
 
 The [private spending slice](spending.md) combines the expense classification work
 from Phase 4 with the first dashboard from Phase 5. It uses one ClickHouse spending
@@ -15,5 +15,5 @@ view, deterministic classification and a small localhost UI. This slice focuses 
 posted expenses, category corrections, and review of ambiguous posted debits.
 The [local category suggestions slice](local-classification.md) starts Phase 6
 with optional Ollama setup, small batches, a bounded cache and explicit review.
-Broader financial modeling, investments and scheduling stay in the longer-term
-specification.
+Broader financial modeling, investment performance and scheduling stay in the
+longer-term specification.

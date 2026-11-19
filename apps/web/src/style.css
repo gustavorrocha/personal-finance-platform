@@ -50,6 +50,7 @@ main {
 }
 .dashboard-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.7rem;
   margin-block-start: 1.1rem;
 }
@@ -227,6 +228,13 @@ td:nth-child(3) {
 td:nth-child(3),
 th:nth-child(3) {
   text-align: right;
+}
+.investment-table td {
+  white-space: nowrap;
+}
+.investment-table .numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 540px) {

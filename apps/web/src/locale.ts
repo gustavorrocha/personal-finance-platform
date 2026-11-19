@@ -27,6 +27,21 @@ export const messages = {
     observedAt: "Observed (UTC)",
     unavailable: "Unavailable",
     accountLimit: "Showing the first 200 accounts for this connection.",
+    investments: "Investments",
+    loadingInvestments: "Loading investments…",
+    investmentsError: "Investments could not be loaded.",
+    noInvestments: "No reported investments are available.",
+    investmentHelp:
+      "Each row shows the last reported position. Check its reference date before treating a value as current.",
+    investmentLimit: "Showing the first 200 positions for this connection.",
+    position: "Position",
+    investmentType: "Type",
+    netBalance: "Net balance",
+    grossAmount: "Gross amount",
+    quantity: "Quantity",
+    unitPrice: "Unit price",
+    referenceDate: "Reference date",
+    maturityDate: "Maturity date",
     connection: "Connection",
     syntheticDemo: "Synthetic demo",
     selectConnection: "Select a connection",
@@ -106,6 +121,21 @@ export const messages = {
     observedAt: "Observado (UTC)",
     unavailable: "Indisponível",
     accountLimit: "Exibindo as primeiras 200 contas desta conexão.",
+    investments: "Investimentos",
+    loadingInvestments: "Carregando investimentos…",
+    investmentsError: "Não foi possível carregar os investimentos.",
+    noInvestments: "Nenhum investimento informado está disponível.",
+    investmentHelp:
+      "Cada linha mostra a última posição informada. Confira a data de referência para saber a que período o valor se refere.",
+    investmentLimit: "Exibindo as primeiras 200 posições desta conexão.",
+    position: "Posição",
+    investmentType: "Tipo",
+    netBalance: "Saldo líquido",
+    grossAmount: "Valor bruto",
+    quantity: "Quantidade",
+    unitPrice: "Preço unitário",
+    referenceDate: "Data de referência",
+    maturityDate: "Vencimento",
     connection: "Conexão",
     syntheticDemo: "Demonstração com dados fictícios",
     selectConnection: "Selecione uma conexão",
@@ -189,6 +219,31 @@ export function formatMoney(
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(
     Number(amount),
   );
+}
+
+export function formatInvestmentValue(
+  amount: string | null,
+  locale: Locale,
+): string {
+  if (amount === null) return messages[locale].unavailable;
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(
+    amount as Intl.StringNumericLiteral,
+  );
+}
+
+const investmentTypes = new Map<string, [string, string]>([
+  ["EQUITY", ["Equity", "Renda variável"]],
+  ["FIXED_INCOME", ["Fixed income", "Renda fixa"]],
+  ["MUTUAL_FUND", ["Mutual fund", "Fundo de investimento"]],
+  ["ETF", ["ETF", "ETF"]],
+  ["SECURITY", ["Security", "Valor mobiliário"]],
+]);
+
+export function investmentTypeLabel(type: string | null, locale: Locale) {
+  if (type === null) return messages[locale].unavailable;
+  return locale === "pt-BR"
+    ? (investmentTypes.get(type)?.[1] ?? "Outro")
+    : (investmentTypes.get(type)?.[0] ?? "Other");
 }
 
 export function formatDate(date: string, locale: Locale): string {
