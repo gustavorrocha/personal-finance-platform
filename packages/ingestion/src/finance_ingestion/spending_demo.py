@@ -112,6 +112,38 @@ def load_account_demo(silver: SilverWarehouse) -> int:
     )
 
 
+def load_investment_demo(silver: SilverWarehouse) -> int:
+    item = item_key(DEMO_SOURCE)
+    positions = [
+        {
+            "id": str(uuid5(item, "investment-demo-equity")),
+            "code": "DEMO11",
+            "type": "EQUITY",
+            "currencyCode": "BRL",
+            "amount": 120.25,
+            "balance": 115.20,
+            "quantity": 5,
+            "value": 24.05,
+            "date": "2026-11-17",
+        },
+        {
+            "id": str(uuid5(item, "investment-demo-fixed-income")),
+            "type": "FIXED_INCOME",
+            "currencyCode": "BRL",
+            "amount": 800,
+            "date": "2026-11-17",
+            "dueDate": "2028-11-17",
+        },
+    ]
+    return commit_demo(
+        silver,
+        item,
+        "investment-demo-v1",
+        datetime(2026, 11, 18, tzinfo=UTC),
+        [CapturePage("investments", json_bytes({"results": positions}))],
+    )
+
+
 def commit_demo(
     silver: SilverWarehouse, item: UUID, name: str, observed: datetime, pages: list[CapturePage]
 ) -> int:

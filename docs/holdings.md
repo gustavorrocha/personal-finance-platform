@@ -41,7 +41,31 @@ tests. A Docker smoke test verified the localhost proxy and restricted grants.
 Headless Chrome verified that the Portuguese Accounts view displays the demo
 balances and marks the missing USD balance as unavailable.
 
-## Investments API
+## Investments
+
+Open **Investments** (**Investimentos**) and select a connection. The dashboard
+shows net balance, gross amount, currency, quantity, unit price, reference date,
+maturity date, and UTC observation time. A missing amount appears as unavailable.
+Use the reference date to tell when a reported value applies.
+
+Rebuild the local stack and load the invented positions using PowerShell.
+
+```powershell
+.\scripts\run_local.ps1
+uv run --frozen finance demo-investments
+Start-Process 'http://127.0.0.1:8080/#investments'
+```
+
+Select **Synthetic demo** if prompted. The BRL demo shows `DEMO11` with a net
+balance of 115.20 and a gross amount of 120.25. A fixed-income position has a
+gross amount of 800 and an unavailable net balance. Loading the demo again replays
+the same observation.
+
+The frontend passed lint, build, and seven tests. Headless Chrome verified both
+Investments languages and the Portuguese Accounts view against an isolated
+Docker stack seeded with the synthetic fixture.
+
+### Local API
 
 `GET /api/investments` returns the latest reported observation for each position
 within a connection. It selects a single connection automatically. When multiple
