@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
+import { visibleConnections } from "./connections";
 import { InvestmentsView } from "./investments";
+import {
+  TransactionDetailCell,
+  type TransactionDetails,
+} from "./transaction-details";
 import {
   deviceLocale,
   formatDate,
@@ -11,6 +16,7 @@ import {
   monthChoices,
   readLanguagePreference,
   type LanguagePreference,
+  type Locale,
 } from "./locale";
 import "./style.css";
 
@@ -21,15 +27,18 @@ type Total = {
   total: string;
   entries: string | number;
 };
-type Expense = {
+type Expense = TransactionDetails & {
   id: string;
+  item: string;
   date: string;
   currency: string;
   amount: string;
   merchant: string;
   category: string;
+  status?: "POSTED" | "PENDING";
 };
 type Review = Omit<Expense, "category"> & {
+  operation?: string;
   decision: "" | "include" | "exclude";
 };
 type Spending = {
@@ -37,7 +46,10 @@ type Spending = {
   selected: Connection | null;
   month: string | null;
   totals: Total[];
+  pending_totals: Omit<Total, "bucket">[];
+  pending_by_category?: Total[];
   expenses: Expense[];
+  has_more_expenses?: boolean;
   reviews: Review[];
   categories: string[];
 };
@@ -52,13 +64,53 @@ function currentView(): "accounts" | "investments" | "spending" {
   return view === "accounts" || view === "investments" ? view : "spending";
 }
 
+function CategoryBreakdown({
+  rows,
+  locale,
+}: {
+  rows: Total[];
+  locale: Locale;
+}) {
+  const categories = rows.filter((row) => row.bucket !== null);
+  const currencies = new Set(categories.map((row) => row.currency));
+  return Array.from(currencies, (currency) => {
+    const entries = categories
+      .filter((row) => row.currency === currency)
+      .sort((a, b) => Number(b.total) - Number(a.total));
+    const max = Math.max(
+      1,
+      ...entries.map((row) => Math.abs(Number(row.total))),
+    );
+    return (
+      <div className="chart" key={currency}>
+        <h3>{currency}</h3>
+        {entries.map((row) => (
+          <div className="bar" key={row.bucket}>
+            <span>{row.bucket}</span>
+            <meter
+              aria-hidden="true"
+              min={0}
+              max={max}
+              value={Math.abs(Number(row.total))}
+            />
+            <span>{formatMoney(row.total, currency, locale)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  });
+}
+
 function App() {
   const [view, setView] = useState(currentView);
   const [preference, setPreference] = useState(readLanguagePreference);
   const locale =
     preference === "device" ? deviceLocale(navigator.languages) : preference;
-  const [item, setItem] = useState("");
+  const [item, setItem] = useState("all");
   const [month, setMonth] = useState("");
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [data, setData] = useState<Spending>();
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -104,6 +156,8 @@ function App() {
     const query = new URLSearchParams();
     if (item) query.set("item", item);
     if (month) query.set("month", month);
+    if (search) query.set("search", search);
+    if (page > 1) query.set("page", String(page));
     setLoading(true);
     setError(undefined);
     void fetch(`/api/spending?${query}`, { signal: request.signal })
@@ -119,7 +173,7 @@ function App() {
         if (!request.signal.aborted) setLoading(false);
       });
     return () => request.abort();
-  }, [item, month, revision, view]);
+  }, [item, month, search, page, revision, view]);
 
   useEffect(() => {
     setAttempted([]);
@@ -127,13 +181,15 @@ function App() {
     setSuggestionStatus(undefined);
   }, [item, month]);
 
-  const candidates = (data?.expenses ?? [])
-    .filter(
-      (row) =>
-        row.category === "Uncategorized" &&
-        row.merchant &&
-        !attempted.includes(row.id),
-    )
+  const eligible = (data?.expenses ?? []).filter(
+    (row) =>
+      row.status !== "PENDING" &&
+      row.category === "Uncategorized" &&
+      row.merchant &&
+      !attempted.includes(row.id),
+  );
+  const candidates = eligible
+    .filter((row) => row.item === eligible[0]?.item)
     .slice(0, 4);
   const hasProposals = data?.expenses.some(
     (row) => row.category === "Uncategorized" && suggestions[row.id],
@@ -142,13 +198,14 @@ function App() {
   async function requestSuggestions() {
     if (!data?.selected || !candidates.length) return;
     const transactions = candidates.map((row) => row.id);
+    const source = candidates[0].item;
     setSuggesting(true);
     setSuggestionStatus(undefined);
     try {
       const response = await fetch("/api/spending/suggestions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item: data.selected.id, transactions }),
+        body: JSON.stringify({ item: source, transactions }),
         signal: AbortSignal.timeout(65000),
       });
       if (!response.ok) throw new Error();
@@ -174,7 +231,7 @@ function App() {
 
   async function save(
     path: "rules" | "reviews",
-    transaction: string,
+    entry: Pick<Expense, "id" | "item">,
     change:
       { category: string } | { decision: "include" | "exclude" | "reset" },
   ) {
@@ -187,8 +244,8 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          item: data.selected.id,
-          transaction,
+          item: entry.item,
+          transaction: entry.id,
           ...change,
         }),
         signal: AbortSignal.timeout(5000),
@@ -204,6 +261,17 @@ function App() {
   }
 
   const currencies = data?.totals.filter((row) => row.bucket === null) ?? [];
+  const combined = data?.selected?.id === "all";
+  const hasImportedConnections = data?.connections.some(
+    (connection) => !connection.is_demo,
+  );
+  const connections = visibleConnections(data?.connections ?? []);
+  const connectionLabels = new Map(
+    data?.connections.map((connection, index) => [
+      connection.id,
+      `${copy.connection} ${number.format(index + 1)}`,
+    ]),
+  );
   const uncategorized =
     data?.totals
       .filter((row) => row.bucket === "Uncategorized")
@@ -265,20 +333,31 @@ function App() {
             <label>
               {copy.connection}
               <select
-                value={item || data?.selected?.id || ""}
+                value={
+                  item === "all" && !hasImportedConnections
+                    ? (data?.selected?.id ?? "")
+                    : item
+                }
                 onChange={(event) => {
                   setItem(event.target.value);
-                  setMonth("");
+                  setLoading(true);
+                  setMonth(month || data?.month || "");
+                  setPage(1);
                   setNotice(undefined);
                 }}
                 disabled={saving || suggesting || !data?.connections.length}
               >
-                <option value="">{copy.selectConnection}</option>
-                {data?.connections.map((connection, index) => (
+                {hasImportedConnections && (
+                  <option value="all">{copy.allConnections}</option>
+                )}
+                {!data?.connections.length && (
+                  <option value="">{copy.selectConnection}</option>
+                )}
+                {connections.map((connection) => (
                   <option key={connection.id} value={connection.id}>
                     {connection.is_demo
                       ? copy.syntheticDemo
-                      : `${copy.connection} ${number.format(index + 1)}`}
+                      : connectionLabels.get(connection.id)}
                   </option>
                 ))}
               </select>
@@ -294,9 +373,10 @@ function App() {
                   !data?.selected ||
                   !activeYear
                 }
-                onChange={(event) =>
-                  setMonth(`${activeYear}-${event.target.value}`)
-                }
+                onChange={(event) => {
+                  setPage(1);
+                  setMonth(`${activeYear}-${event.target.value}`);
+                }}
               >
                 {!activeMonth && <option value="">—</option>}
                 {monthChoices(locale).map(({ value, label }) => (
@@ -317,9 +397,10 @@ function App() {
                   !data?.selected ||
                   !activeMonth
                 }
-                onChange={(event) =>
-                  setMonth(`${event.target.value}-${activeMonth}`)
-                }
+                onChange={(event) => {
+                  setPage(1);
+                  setMonth(`${event.target.value}-${activeMonth}`);
+                }}
               >
                 {!activeYear && <option value="">—</option>}
                 {years.map((year) => (
@@ -346,9 +427,37 @@ function App() {
               : copy.noExpenses}
           </p>
         )}
-        {!loading && !error && data?.selected && !currencies.length && (
-          <p className="empty">{copy.noSpending}</p>
-        )}
+        {!loading &&
+          !error &&
+          data?.selected &&
+          !currencies.length &&
+          !data.pending_totals?.length && (
+            <p className="empty">{copy.noSpending}</p>
+          )}
+        {!loading &&
+          !error &&
+          data?.selected &&
+          !!data.pending_totals?.length && (
+            <section className="panel" aria-labelledby="pending-card-spending">
+              <h2 id="pending-card-spending">{copy.pendingCardSpending}</h2>
+              <div className="summary">
+                {data.pending_totals.map((row) => (
+                  <div key={row.currency}>
+                    <span>{row.currency}</span>
+                    <strong>
+                      {formatMoney(row.total, row.currency, locale)}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+              {(data.pending_by_category?.length ?? 0) > 0 && (
+                <CategoryBreakdown
+                  rows={data.pending_by_category ?? []}
+                  locale={locale}
+                />
+              )}
+            </section>
+          )}
         {!loading && !error && data?.selected && currencies.length > 0 && (
           <div className="summary">
             {currencies.map((row) => (
@@ -385,7 +494,7 @@ function App() {
                     <thead>
                       <tr>
                         <th scope="col">{copy.date}</th>
-                        <th scope="col">{copy.merchant}</th>
+                        <th scope="col">{copy.transactionDetails}</th>
                         <th scope="col">{copy.amount}</th>
                         <th scope="col">{copy.reviewStatus}</th>
                         <th scope="col">{copy.reviewAction}</th>
@@ -399,7 +508,15 @@ function App() {
                               {formatDate(entry.date, locale)}
                             </time>
                           </td>
-                          <td>{entry.merchant || copy.unknownMerchant}</td>
+                          <TransactionDetailCell
+                            entry={entry}
+                            locale={locale}
+                            connection={
+                              combined
+                                ? connectionLabels.get(entry.item)
+                                : undefined
+                            }
+                          />
                           <td>
                             {formatMoney(entry.amount, entry.currency, locale)}
                           </td>
@@ -415,7 +532,10 @@ function App() {
                               className="review-actions"
                               role="group"
                               aria-label={
-                                entry.merchant || copy.unknownMerchant
+                                entry.description ||
+                                entry.merchant ||
+                                entry.operation ||
+                                copy.unavailable
                               }
                             >
                               {entry.decision !== "include" && (
@@ -423,7 +543,7 @@ function App() {
                                   disabled={saving}
                                   type="button"
                                   onClick={() =>
-                                    void save("reviews", entry.id, {
+                                    void save("reviews", entry, {
                                       decision: "include",
                                     })
                                   }
@@ -436,7 +556,7 @@ function App() {
                                   disabled={saving}
                                   type="button"
                                   onClick={() =>
-                                    void save("reviews", entry.id, {
+                                    void save("reviews", entry, {
                                       decision: "exclude",
                                     })
                                   }
@@ -449,7 +569,7 @@ function App() {
                                   disabled={saving}
                                   type="button"
                                   onClick={() =>
-                                    void save("reviews", entry.id, {
+                                    void save("reviews", entry, {
                                       decision: "reset",
                                     })
                                   }
@@ -469,40 +589,36 @@ function App() {
             )}
           </section>
         )}
-        {!loading && !error && data?.selected && currencies.length > 0 && (
+        {!loading && !error && data?.selected && (
           <>
-            <section className="panel" aria-labelledby="categories">
-              <h2 id="categories">{copy.spendingByCategory}</h2>
-              {currencies.map(({ currency }) => {
-                const rows = data.totals
-                  .filter((row) => row.currency === currency && row.bucket)
-                  .sort((a, b) => Number(b.total) - Number(a.total));
-                const max = Math.max(
-                  1,
-                  ...rows.map((row) => Math.abs(Number(row.total))),
-                );
-                return (
-                  <div className="chart" key={currency}>
-                    <h3>{currency}</h3>
-                    {rows.map((row) => (
-                      <div className="bar" key={row.bucket}>
-                        <span>{row.bucket}</span>
-                        <meter
-                          aria-hidden="true"
-                          min={0}
-                          max={max}
-                          value={Math.abs(Number(row.total))}
-                        />
-                        <span>{formatMoney(row.total, currency, locale)}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </section>
+            {currencies.length > 0 && (
+              <section className="panel" aria-labelledby="categories">
+                <h2 id="categories">{copy.spendingByCategory}</h2>
+                <CategoryBreakdown rows={data.totals} locale={locale} />
+              </section>
+            )}
             <section className="panel" aria-labelledby="expenses">
               <h2 id="expenses">{copy.recentExpenses}</h2>
               <p>{copy.matchingExpenses}</p>
+              <form
+                className="filters"
+                role="search"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setPage(1);
+                  setSearch(searchInput.trim());
+                }}
+              >
+                <input
+                  type="search"
+                  aria-label={copy.searchExpenses}
+                  placeholder={copy.searchExpenses}
+                  maxLength={120}
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                />
+                <button type="submit">{copy.searchExpenses}</button>
+              </form>
               {(candidates.length > 0 || suggesting) && (
                 <button
                   type="button"
@@ -521,7 +637,7 @@ function App() {
                   <thead>
                     <tr>
                       <th scope="col">{copy.date}</th>
-                      <th scope="col">{copy.merchant}</th>
+                      <th scope="col">{copy.transactionDetails}</th>
                       <th scope="col">{copy.amount}</th>
                       <th scope="col">{copy.category}</th>
                     </tr>
@@ -534,9 +650,24 @@ function App() {
                             {formatDate(entry.date, locale)}
                           </time>
                         </td>
-                        <td>{entry.merchant || copy.unknownMerchant}</td>
+                        <TransactionDetailCell
+                          entry={entry}
+                          locale={locale}
+                          connection={
+                            combined
+                              ? connectionLabels.get(entry.item)
+                              : undefined
+                          }
+                        />
                         <td>
                           {formatMoney(entry.amount, entry.currency, locale)}
+                          <div>
+                            <small>
+                              {entry.status === "PENDING"
+                                ? copy.pendingStatus
+                                : copy.postedStatus}
+                            </small>
+                          </div>
                         </td>
                         <td>
                           <select
@@ -544,20 +675,38 @@ function App() {
                               entry.merchant || copy.expense,
                               formatDate(entry.date, locale),
                             )}
-                            disabled={saving || suggesting || loading}
+                            disabled={
+                              saving ||
+                              suggesting ||
+                              loading ||
+                              entry.status === "PENDING"
+                            }
                             value={entry.category}
                             onChange={(event) =>
-                              void save("rules", entry.id, {
+                              void save("rules", entry, {
                                 category: event.target.value,
                               })
                             }
                           >
+                            {!data.categories.includes(entry.category) && (
+                              <option value={entry.category} disabled>
+                                {entry.category}
+                              </option>
+                            )}
                             {data.categories.map((category) => (
                               <option key={category} value={category}>
                                 {category}
                               </option>
                             ))}
                           </select>
+                          {entry.bank_category &&
+                            entry.bank_category !== entry.category && (
+                              <div>
+                                <small>
+                                  {copy.bankCategory} · {entry.bank_category}
+                                </small>
+                              </div>
+                            )}
                           {entry.category === "Uncategorized" &&
                             suggestions[entry.id] && (
                               <div className="suggestion">
@@ -569,7 +718,7 @@ function App() {
                                     type="button"
                                     disabled={saving}
                                     onClick={() =>
-                                      void save("rules", entry.id, {
+                                      void save("rules", entry, {
                                         category: suggestions[entry.id],
                                       })
                                     }
@@ -597,7 +746,31 @@ function App() {
                   </tbody>
                 </table>
               </div>
-              {data.expenses.length === 100 && <p>{copy.recentLimit}</p>}
+              {data.expenses.length === 0 && <p>{copy.noMatchingExpenses}</p>}
+              {(page > 1 || data.has_more_expenses) && (
+                <div className="review-actions">
+                  <button
+                    type="button"
+                    disabled={page === 1 || saving || suggesting}
+                    onClick={() => setPage((value) => value - 1)}
+                  >
+                    {copy.previousPage}
+                  </button>
+                  <span>{number.format(page)}</span>
+                  <button
+                    type="button"
+                    disabled={
+                      !data.has_more_expenses ||
+                      page >= 1000 ||
+                      saving ||
+                      suggesting
+                    }
+                    onClick={() => setPage((value) => value + 1)}
+                  >
+                    {copy.nextPage}
+                  </button>
+                </div>
+              )}
             </section>
           </>
         )}

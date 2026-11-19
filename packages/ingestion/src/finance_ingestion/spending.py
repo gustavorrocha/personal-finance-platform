@@ -3,6 +3,7 @@
 import hashlib
 import re
 import unicodedata
+from decimal import Decimal
 
 PROVIDER_CATEGORIES = {
     "groceries": "Groceries",
@@ -25,8 +26,15 @@ MERCHANT_WORDS = {
     "farmácia": "Health",
 }
 PAYMENT_RAILS = {"PIX", "TED", "DOC"}
+BANK_EXPENSE_OPERATIONS = {
+    "CARTAO",
+    "PACOTE_TARIFA_SERVICOS",
+    "TARIFA_SERVICOS_AVULSOS",
+}
 NON_SPENDING = {
     "TRANSFER",
+    "TRANSFERENCIA_MESMA_INSTITUICAO",
+    "SAQUE",
     "PAGAMENTO",
     "PAGAMENTO_FATURA",
     "OPERACOES_CREDITO_CONTRATADAS_CARTAO",
@@ -44,6 +52,10 @@ def normalize(value: object) -> str:
 def spending_fields(record: dict, transaction_key: str, *, card_account: bool = False) -> dict:
     operation = record.get("operationType")
     operation = operation.upper().strip() if isinstance(operation, str) else ""
+    payment_data = record.get("paymentData")
+    payment_method = payment_data.get("paymentMethod") if isinstance(payment_data, dict) else None
+    if not operation and isinstance(payment_method, str) and payment_method in PAYMENT_RAILS:
+        operation = payment_method
     direction = record.get("type")
     provider_category = normalize(record.get("category"))
     hint = PROVIDER_CATEGORIES.get(provider_category, "")
@@ -57,7 +69,18 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
         (MERCHANT_WORDS[word] for word in merchant_match.split() if word in MERCHANT_WORDS),
         "",
     )
-    excluded = operation in NON_SPENDING or any(
+    amount = record.get("amount")
+    # Some connectors label positive card purchases PAGAMENTO.
+    mislabeled_card_purchase = (
+        operation == "PAGAMENTO"
+        and card_account
+        and direction == "DEBIT"
+        and isinstance(record.get("creditCardMetadata"), dict)
+        and isinstance(amount, (int, float, Decimal))
+        and not isinstance(amount, bool)
+        and amount > 0
+    )
+    excluded = (operation in NON_SPENDING and not mislabeled_card_purchase) or any(
         word in provider_category for word in ("transfer", "bill payment", "credit card payment")
     )
     kind = ""
@@ -66,12 +89,16 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
             kind = "refund"
         elif direction == "DEBIT" and operation not in REFUNDS:
             has_evidence = operation not in PAYMENT_RAILS and (
-                hint or card_account or isinstance(record.get("creditCardMetadata"), dict)
+                hint
+                or operation in BANK_EXPENSE_OPERATIONS
+                or card_account
+                or isinstance(record.get("creditCardMetadata"), dict)
             )
             kind = "purchase" if has_evidence else "review"
     return {
         "spending_kind": kind,
         "spending_category": hint,
+        "spending_operation": operation if kind and operation in PAYMENT_RAILS else "",
         "merchant_label": label if kind else "",
         "merchant_key": (
             hashlib.sha256(

@@ -194,6 +194,17 @@ meter::-moz-meter-bar {
 .table-wrap {
   overflow-x: auto;
 }
+.transaction-details {
+  min-width: 13rem;
+  overflow-wrap: anywhere;
+}
+.transaction-details > div {
+  white-space: pre-wrap;
+}
+.transaction-details small {
+  display: block;
+  margin-top: 0.2rem;
+}
 .review-actions {
   display: flex;
   flex-wrap: wrap;

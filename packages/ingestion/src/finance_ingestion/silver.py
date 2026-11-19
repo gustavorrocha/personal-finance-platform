@@ -58,6 +58,48 @@ def decimal_field(value: object) -> str | None:
     return format(normalized, "f")
 
 
+def transaction_details(record: dict) -> dict:
+    metadata = record.get("creditCardMetadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    description = record.get("descriptionRaw")
+    if not isinstance(description, str) or not description.strip():
+        description = record.get("description")
+    category = record.get("category")
+    transaction_time = None
+    reported = record.get("date")
+    if isinstance(reported, str) and len(reported) > 10:
+        timestamp = datetime.fromisoformat(reported)
+        if timestamp.tzinfo is not None and any(
+            (timestamp.hour, timestamp.minute, timestamp.second, timestamp.microsecond)
+        ):
+            transaction_time = sql_time(timestamp)
+    purchase_date = None
+    try:
+        purchase_date = provider_date(metadata.get("purchaseDate"))
+    except ValueError:
+        pass
+    installments = {}
+    for field, key in (
+        ("installment_number", "installmentNumber"),
+        ("total_installments", "totalInstallments"),
+    ):
+        value = metadata.get(key)
+        installments[field] = value if type(value) is int and 1 <= value <= 65535 else None
+    purchase_amount = None
+    try:
+        purchase_amount = decimal_field(metadata.get("totalAmount"))
+    except ValueError:
+        pass
+    return {
+        "bank_description": description[:1024] if isinstance(description, str) else "",
+        "bank_category": category[:256] if isinstance(category, str) else "",
+        "transaction_time": transaction_time,
+        "original_purchase_date": purchase_date,
+        "installment_total_amount": purchase_amount,
+        **installments,
+    }
+
+
 def normalized_row(
     manifest: Manifest, item: UUID, entry: ReplayRecord, ordinal: int, cards: set[UUID]
 ) -> dict:
@@ -133,6 +175,7 @@ def normalized_row(
         raise ValueError("Incomplete transaction")
     if resource == "transactions":
         row.update(spending_fields(record, str(key), card_account=entry.scope_id in cards))
+        row.update(transaction_details(record))
     if resource == "investments":
         row["rate_type"] = text_field(record.get("rateType"))
         row["symbol"] = text_field(record.get("code"))

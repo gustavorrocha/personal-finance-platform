@@ -27,7 +27,7 @@ services:
         target: /etc/clickhouse-server/users.d/health.xml
       - source: dashboard_user
         # Changing the mount target reloads the updated grants on existing installs.
-        target: /etc/clickhouse-server/users.d/account-history-dashboard.xml
+        target: /etc/clickhouse-server/users.d/card-spending-dashboard.xml
     healthcheck:
       test: [CMD, clickhouse-client, --host, 127.0.0.1, --query, SELECT 1]
       interval: 5s
