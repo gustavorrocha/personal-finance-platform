@@ -34,11 +34,13 @@ export function formatMoney(
 export function formatReportedValue(
   amount: string | null,
   locale: Locale,
+  currency?: string | null,
 ): string {
   if (amount === null) return messages[locale].unavailable;
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(
-    amount as Intl.StringNumericLiteral,
-  );
+  return new Intl.NumberFormat(locale, {
+    ...(currency ? { style: "currency", currency } : {}),
+    maximumFractionDigits: 12,
+  }).format(amount as Intl.StringNumericLiteral);
 }
 
 const investmentTypes = new Map<

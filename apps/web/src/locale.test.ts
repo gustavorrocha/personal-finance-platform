@@ -24,7 +24,7 @@ test("device language chooses the first supported browser preference", () => {
   assert.equal(deviceLocale([]), "en-US");
 });
 
-test("reported investment decimals keep their precision and distinguish zero from missing", () => {
+test("reported decimals keep their precision and distinguish zero from missing", () => {
   assert.equal(
     formatReportedValue("9007199254740993.000000000001", "en-US"),
     "9,007,199,254,740,993.000000000001",
@@ -35,6 +35,11 @@ test("reported investment decimals keep their precision and distinguish zero fro
   );
   assert.equal(formatReportedValue("0", "pt-BR"), "0");
   assert.equal(formatReportedValue(null, "pt-BR"), "Indisponível");
+  assert.equal(
+    formatReportedValue("9007199254740993.000000000001", "en-US", "USD"),
+    "$9,007,199,254,740,993.000000000001",
+  );
+  assert.equal(formatReportedValue("0", "pt-BR", "BRL"), "R$\u00a00,00");
 });
 
 test("Brazilian formatting preserves the currency and calendar day", () => {
