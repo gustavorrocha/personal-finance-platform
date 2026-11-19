@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  categoryLabel,
   deviceLocale,
   formatDate,
   formatReportedValue,
   formatMoney,
+  messages,
   monthChoices,
 } from "./locale.ts";
+
+test("localized interface templates preserve provider and user values verbatim", () => {
+  assert.equal(
+    messages["pt-BR"].categoryFor("Loja {date}", "19/11/2026"),
+    "Categoria de Loja {date} em 19/11/2026",
+  );
+});
 
 test("device language chooses the first supported browser preference", () => {
   assert.equal(deviceLocale(["pt-BR", "en-US"]), "pt-BR");
@@ -28,23 +35,6 @@ test("reported investment decimals keep their precision and distinguish zero fro
   );
   assert.equal(formatReportedValue("0", "pt-BR"), "0");
   assert.equal(formatReportedValue(null, "pt-BR"), "Indisponível");
-});
-
-test("Portuguese category labels leave saved identifiers available in English", () => {
-  const translations = {
-    Groceries: "Supermercado",
-    Dining: "Alimentação fora de casa",
-    Transport: "Transporte",
-    Home: "Moradia",
-    Shopping: "Compras",
-    Health: "Saúde",
-    Leisure: "Lazer",
-    Uncategorized: "Sem categoria",
-  };
-  for (const [category, label] of Object.entries(translations)) {
-    assert.equal(categoryLabel(category, "pt-BR"), label);
-    assert.equal(categoryLabel(category, "en-US"), category);
-  }
 });
 
 test("Brazilian formatting preserves the currency and calendar day", () => {

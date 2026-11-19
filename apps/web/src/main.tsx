@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
 import { InvestmentsView } from "./investments";
 import {
-  categoryLabel,
   deviceLocale,
   formatDate,
   formatMoney,
@@ -367,7 +366,7 @@ function App() {
               </div>
             ))}
             <div>
-              <span>{categoryLabel("Uncategorized", locale)}</span>
+              <span>{"Uncategorized"}</span>
               <strong>{number.format(uncategorized)}</strong>
               <small>{copy.awaitingCategory}</small>
             </div>
@@ -487,9 +486,7 @@ function App() {
                     <h3>{currency}</h3>
                     {rows.map((row) => (
                       <div className="bar" key={row.bucket}>
-                        <span>
-                          {row.bucket && categoryLabel(row.bucket, locale)}
-                        </span>
+                        <span>{row.bucket}</span>
                         <meter
                           aria-hidden="true"
                           min={0}
@@ -557,7 +554,7 @@ function App() {
                           >
                             {data.categories.map((category) => (
                               <option key={category} value={category}>
-                                {categoryLabel(category, locale)}
+                                {category}
                               </option>
                             ))}
                           </select>
@@ -565,8 +562,7 @@ function App() {
                             suggestions[entry.id] && (
                               <div className="suggestion">
                                 <p>
-                                  {copy.suggested} ·{" "}
-                                  {categoryLabel(suggestions[entry.id], locale)}
+                                  {copy.suggested} · {suggestions[entry.id]}
                                 </p>
                                 <div className="review-actions">
                                   <button
