@@ -99,7 +99,9 @@
     "investment_MUTUAL_FUND": "43b217cc7677fec20ddf4f672c54b71532e2e95424cf7f0f75692c4789d9683e",
     "investment_ETF": "f80cac6f6a85b1aeea8c357b0bd385cff80872d508400503c1f7cb102fa3d7f8",
     "investment_SECURITY": "8f6fb4eb7f42c0e245e29e63f5b82cc3ba19852681d1ed9aed291f59cf75ec0e",
-    "investmentOther": "f97e9da0e3b879f0a9df979ae260a5f7e1371edb127c1862d4f861981166cdc1"
+    "investmentOther": "f97e9da0e3b879f0a9df979ae260a5f7e1371edb127c1862d4f861981166cdc1",
+    "reportedInvestmentTotals": "47d1f2066a5a9a4b534e1a3b3f80afcf393d9979754b6bfee53c4d5d2ebe5831",
+    "incompleteInvestmentTotals": "ff679858a4427e29414db37c4a9a4fad5f6e2adbe9e6e92cb5839ffa12fb83aa"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -201,6 +203,8 @@
     "investment_MUTUAL_FUND": "Fundo de investimento",
     "investment_ETF": "ETF",
     "investment_SECURITY": "Valor mobiliário",
-    "investmentOther": "Outro"
+    "investmentOther": "Outro",
+    "reportedInvestmentTotals": "Saldos líquidos de investimentos por moeda",
+    "incompleteInvestmentTotals": "Algumas posições estão sem saldo líquido ou moeda informada."
   }
 }

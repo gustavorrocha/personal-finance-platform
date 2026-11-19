@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { summarizeBankBalances } from "./account-balance-summary.ts";
+import {
+  summarizeBankBalances,
+  summarizeInvestmentBalances,
+} from "./balance-summary.ts";
 
 test("bank totals preserve decimals and currencies while excluding cards and missing values", () => {
   const early = "2026-11-17T00:00:00.000000Z";
@@ -46,5 +49,23 @@ test("bank totals preserve decimals and currencies while excluding cards and mis
         },
       ],
     },
+  );
+});
+
+test("investment totals use net balances and flag positions with only a gross amount", () => {
+  const observed_at = "2026-11-18T10:00:00.000000Z";
+  const position = { currency: "BRL", gross_amount: "900", observed_at };
+  const { totals, unavailable } = summarizeInvestmentBalances([
+    { ...position, net_balance: "115.20" },
+    { ...position, net_balance: null },
+    { ...position, currency: "USD", net_balance: "10" },
+  ]);
+  assert.equal(unavailable, 1);
+  assert.deepEqual(
+    totals.map(({ currency, balance }) => [currency, balance]),
+    [
+      ["BRL", "115.200000000000"],
+      ["USD", "10.000000000000"],
+    ],
   );
 });

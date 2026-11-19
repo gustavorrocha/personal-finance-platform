@@ -98,5 +98,7 @@
   "investment_MUTUAL_FUND": "Mutual fund",
   "investment_ETF": "ETF",
   "investment_SECURITY": "Security",
-  "investmentOther": "Other"
+  "investmentOther": "Other",
+  "reportedInvestmentTotals": "Reported investment net balances by currency",
+  "incompleteInvestmentTotals": "Some positions have no reported net balance or currency."
 }
