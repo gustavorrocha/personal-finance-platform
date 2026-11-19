@@ -134,5 +134,7 @@
   "totalInvested": "Total invested",
   "latestBalance": "Latest balance on",
   "investmentPositions": "Investment positions",
-  "savingsBoxes": "Savings boxes"
+  "savingsBoxes": "Savings boxes",
+  "remuneration": "Remuneration",
+  "investment_SAVINGS_BOX": "Savings box"
 }

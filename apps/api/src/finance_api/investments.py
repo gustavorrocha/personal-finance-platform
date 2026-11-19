@@ -20,7 +20,9 @@ async def investment_snapshot(item: UUID | None = None):
     rows = []
     if selected is not None:
         rows = await dashboard_query(
-            "SELECT position_key AS id, ticker, position_type AS type, subtype, status, currency, "
+            "SELECT position_key AS id, ticker, name, position_type AS type, subtype, status, "
+            "currency, "
+            "toString(indexer_percentage) AS indexer_percentage, indexer, "
             "toString(net_balance) AS net_balance, toString(gross_amount) AS gross_amount, "
             "toString(quantity) AS quantity, toString(unit_price) AS unit_price, "
             "reference_date, maturity_date, "

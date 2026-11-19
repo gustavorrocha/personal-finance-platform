@@ -53,6 +53,7 @@ const investmentTypes = new Map<
     MUTUAL_FUND: "investment_MUTUAL_FUND",
     ETF: "investment_ETF",
     SECURITY: "investment_SECURITY",
+    SAVINGS_BOX: "investment_SAVINGS_BOX",
   } as const),
 );
 
