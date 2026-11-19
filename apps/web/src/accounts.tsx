@@ -20,9 +20,11 @@ type AccountSnapshot = Snapshot & { accounts: Account[] };
 function BankBalanceSummary({
   accounts,
   locale,
+  observed,
 }: {
   accounts: Account[];
   locale: Locale;
+  observed: Intl.DateTimeFormat;
 }) {
   const { totals, unavailable } = summarizeBankBalances(accounts);
   if (totals.length === 0 && unavailable === 0) return null;
@@ -31,10 +33,26 @@ function BankBalanceSummary({
     <section aria-labelledby="bank-balances">
       <h3 id="bank-balances">{copy.reportedBankTotals}</h3>
       <dl>
-        {totals.map(({ currency, balance }) => (
+        {totals.map(({ currency, balance, oldest, newest }) => (
           <div key={currency}>
             <dt>{currency}</dt>
             <dd>{formatReportedValue(balance, locale)}</dd>
+            <dd>
+              <small>
+                {copy.observedAt}{" "}
+                <time dateTime={oldest}>
+                  {observed.format(new Date(oldest))}
+                </time>
+                {oldest !== newest && (
+                  <>
+                    {" – "}
+                    <time dateTime={newest}>
+                      {observed.format(new Date(newest))}
+                    </time>
+                  </>
+                )}
+              </small>
+            </dd>
           </div>
         ))}
       </dl>
@@ -81,6 +99,7 @@ export function AccountsView({ locale }: { locale: Locale }) {
               <BankBalanceSummary
                 accounts={snapshot.accounts}
                 locale={locale}
+                observed={observed}
               />
             )}
             {snapshot.accounts.length === 0 ? (

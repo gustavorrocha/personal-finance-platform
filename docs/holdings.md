@@ -9,8 +9,8 @@ currency and observation time in UTC.
 The bank balance summary adds the latest reported bank balances within the
 selected connection and shows a separate total per currency. It flags missing
 bank balances or currencies, excludes credit cards and investments, and hides
-the summary when the account list is truncated. The underlying observations
-can have different timestamps.
+the summary when the account list is truncated. Each total shows the UTC range
+of observations used, or a single timestamp if all observations match.
 
 The localhost API exposes the latest reported account observation per account
 and connection at `GET /api/accounts`. A single connection is selected
