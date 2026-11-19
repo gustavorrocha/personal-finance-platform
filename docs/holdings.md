@@ -31,6 +31,8 @@ and one USD account with an unavailable balance. Its accounts use the same
 synthetic connection as the spending demo. Under **Balance history**
 (**Histórico de saldos**), choose the credit card to see its previous zero
 balance. Loading the fixture again replays the same observations.
+When more than 90 observations are available, use **Show up to 200
+observations** to expand the selected account's history.
 
 Chrome verified the history in English at desktop width and in Brazilian
 Portuguese at mobile width. In both cases, keyboard selection distinguished a

@@ -57,11 +57,12 @@ function HistoryTable({
   const copy = messages[locale];
   const [result, setResult] = useState<AccountHistory | null | "error">();
   const [retry, setRetry] = useState(0);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const request = new AbortController();
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(8000)]);
-    void fetchAccountHistory(item, account, signal)
+    void fetchAccountHistory(item, account, signal, expanded ? 200 : undefined)
       .then((history) => {
         if (!request.signal.aborted) setResult(history);
       })
@@ -69,7 +70,7 @@ function HistoryTable({
         if (!request.signal.aborted) setResult("error");
       });
     return () => request.abort();
-  }, [item, account, retry]);
+  }, [item, account, retry, expanded]);
 
   if (result === undefined) return <p role="status">{copy.loadingHistory}</p>;
   if (result === "error") {
@@ -121,7 +122,20 @@ function HistoryTable({
           </tbody>
         </table>
       </div>
-      {result.truncated && <p>{copy.historyLimit}</p>}
+      {result.truncated &&
+        (expanded ? (
+          <p>{copy.expandedHistoryLimit}</p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setResult(undefined);
+              setExpanded(true);
+            }}
+          >
+            {copy.expandHistory}
+          </button>
+        ))}
     </>
   );
 }
