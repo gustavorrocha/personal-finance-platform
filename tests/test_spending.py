@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from finance_api import spending
+from finance_api import investments, spending
 from finance_api.main import app
 from finance_ingestion.collection import entity_key, item_key
 from finance_ingestion.silver import transaction_details
@@ -200,13 +200,20 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
     def account(account_type):
         record = {"id": CARD, "type": account_type, "currencyCode": "BRL"}
         if account_type == "BANK":
-            boxes = [7.25, 0, 3]
+            remuneration = {"indexer": "CDI", "postFixedIndexerPercentage": 1.2}
+            boxes = [("Viagem", 7.25, "BRL"), ("Casa", 0, "BRL"), ("Reserva", 3, "BRL")]
+            boxes.append(("Dolares", 50, "USD"))
             record["bankData"] = {
                 "reservedBalances": [
-                    {"availableAmounts": [{"amount": amount, "currencyCode": "BRL"}]}
-                    for amount in boxes
+                    {
+                        "name": name,
+                        "identification": name.lower(),
+                        "availableAmounts": [
+                            {"amount": amount, "currencyCode": code, "remuneration": remuneration}
+                        ],
+                    }
+                    for name, amount, code in boxes
                 ]
-                + [{"availableAmounts": [{"amount": 50, "currencyCode": "USD"}]}]
             }
         return record
 
@@ -268,6 +275,11 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         return Decimal(next(row["total"] for row in page["totals"] if row["bucket"] is None))
 
     monkeypatch.setattr(spending, "dashboard_query", execute)
+    monkeypatch.setattr(investments, "dashboard_query", execute)
+
+    def execute_sql(query):
+        return silver.execute(query).decode()
+
     path = "/api/spending"
     with TestClient(app) as client:
         result = client.get(path, params={"item": "all"})
@@ -294,6 +306,28 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         assert [(row["currency"], row["source"], row["total"]) for row in page["invested"]] == [
             ("BRL", "savings_boxes", "10.25")
         ]
+        boxes = execute_sql(
+            "SELECT name, currency, toString(balance), toString(indexer_percentage) "
+            "FROM analytics.savings_boxes ORDER BY name FORMAT TSV"
+        )
+        assert boxes.splitlines() == [
+            "Casa	BRL	0	120",
+            "Dolares	USD	50	120",
+            "Reserva	BRL	3	120",
+            "Viagem	BRL	7.25	120",
+        ]
+        flows = execute_sql(
+            "SELECT kind, savings_box FROM analytics.investment_flows "
+            "WHERE savings_box != '' ORDER BY kind FORMAT TSV"
+        )
+        assert flows.splitlines() == ["contribution	Viagem", "withdrawal	Viagem"]
+        positions = client.get("/api/investments", params={"item": str(item_key(ITEM))}).json()
+        assert {row["name"] for row in positions["positions"]} == {
+            "Casa",
+            "Dolares",
+            "Reserva",
+            "Viagem",
+        }
         assert {row["category"] for row in page["history"] if row["status"] == "PENDING"} == {
             "Office supplies"
         }
@@ -428,3 +462,49 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
             net = next(row for row in report["totals"] if row["bucket"] is None)
             assert Decimal(net["total"]) == Decimal(expected)
             assert report["reviews"][0]["decision"] == ("" if decision == "reset" else decision)
+
+
+def test_investment_details_and_movement_costs_reach_silver():
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from finance_ingestion.silver import normalized_row
+    from finance_lake.bronze import ReplayRecord
+
+    manifest = SimpleNamespace(run_id=uuid4(), retrieved_at_utc=datetime(2026, 1, 2, tzinfo=UTC))
+
+    def row(resource, record):
+        entry = ReplayRecord(uuid4(), uuid4(), uuid4(), {"id": str(uuid4()), **record}, resource)
+        return normalized_row(manifest, uuid4(), entry, 0, set())
+
+    position = row(
+        "investments",
+        {
+            "name": "LCA Banco X",
+            "issuer": "Banco X",
+            "purchaseDate": "2025-01-10",
+            "fixedAnnualRate": Decimal("6.5"),
+            "amountOriginal": 1000,
+            "amountWithdrawal": 1080,
+            "taxes": 12,
+            "taxes2": 0,
+        },
+    )
+    assert (position["name"], position["purchase_date"]) == ("LCA Banco X", "2025-01-10")
+    assert Decimal(position["original_amount"]) == 1000
+    assert Decimal(position["income_tax"]) == 12 and Decimal(position["iof"]) == 0
+    movement = row(
+        "investment_movements",
+        {
+            "movementType": "DEBIT",
+            "netAmount": 98,
+            "expenses": {
+                "brokerageFee": Decimal("1.5"),
+                "custodyFee": Decimal("0.5"),
+                "incomeTax": 3,
+            },
+        },
+    )
+    assert movement["movement_type"] == "DEBIT"
+    assert Decimal(movement["fees"]) == 2 and Decimal(movement["income_tax"]) == 3
+    assert row("investment_movements", {})["fees"] is None

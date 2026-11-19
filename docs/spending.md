@@ -121,6 +121,23 @@ month: investment positions plus money reserved inside bank accounts. Mercado
 Pago reports savings boxes as reserved balances of the checking account
 (`bankData.reservedBalances`), in the account currency.
 
+Each savings box is also kept on its own. **Investments** lists every box of
+the selected connection with its balance and remuneration (for example
+`120% CDI`) next to the reported positions. For return calculations, the
+warehouse keeps:
+
+| View | Content |
+|---|---|
+| `analytics.savings_boxes` | Boxes in the latest observation of each account: name, currency, balance, indexer and percentage, fixed rate |
+| `analytics.savings_box_history` | One balance per box and observation day |
+| `analytics.investment_flows` | Investment movements; `savings_box` names the box of a `Dinheiro reservado/retirado` movement |
+
+Investment positions also keep their name, issuer, purchase date, fixed annual
+rate, original and withdrawable amounts, income tax and IOF. Investment
+movements keep their direction, net amount, income tax, IOF and the sum of
+brokerage, custody, exchange and other fees. These columns live in
+`core.provider_versions`.
+
 Card transactions are never investment movements. Rebuild the projections from
 Bronze after applying the migrations to classify earlier imports.
 

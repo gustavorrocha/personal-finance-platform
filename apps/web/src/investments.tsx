@@ -12,6 +12,9 @@ import { SnapshotView, type Snapshot } from "./snapshot";
 type Position = {
   id: string;
   ticker: string | null;
+  name: string | null;
+  indexer_percentage: string | null;
+  indexer: string | null;
   type: string | null;
   currency: string | null;
   net_balance: string | null;
@@ -84,6 +87,7 @@ export function InvestmentsView({ locale }: { locale: Locale }) {
                     <tr>
                       <th scope="col">{copy.position}</th>
                       <th scope="col">{copy.investmentType}</th>
+                      <th scope="col">{copy.remuneration}</th>
                       <th scope="col">{copy.netBalance}</th>
                       <th scope="col">{copy.grossAmount}</th>
                       <th scope="col">{copy.currency}</th>
@@ -98,10 +102,16 @@ export function InvestmentsView({ locale }: { locale: Locale }) {
                     {positions.map((row, index) => (
                       <tr key={row.id}>
                         <th scope="row">
-                          {row.ticker ??
+                          {row.name ??
+                            row.ticker ??
                             `${copy.position} ${number.format(index + 1)}`}
                         </th>
                         <td>{investmentTypeLabel(row.type, locale)}</td>
+                        <td>
+                          {row.indexer_percentage && row.indexer
+                            ? `${number.format(Number(row.indexer_percentage))}% ${row.indexer}`
+                            : copy.unavailable}
+                        </td>
                         <td className="numeric">{value(row.net_balance)}</td>
                         <td className="numeric">{value(row.gross_amount)}</td>
                         <td>{row.currency ?? copy.unavailable}</td>

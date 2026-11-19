@@ -135,7 +135,9 @@
     "totalInvested": "0cfdf66c0ec8ec358cdc657e8d438016aed01a4de3ab20cea90361b8eabbbe0e",
     "latestBalance": "d8b9738b58f646e0060eda6f7ccd3842bcfd0ea865e9cae6ed1e8fa65b333e19",
     "investmentPositions": "fc349fb579fc0c226bae9272f4f89c4709e12e73059adfcd9745fae18c053089",
-    "savingsBoxes": "39a4611cf62d102390ba74743feb32b51a7d9fb0cc6fcad4f1a8840f89a8e429"
+    "savingsBoxes": "39a4611cf62d102390ba74743feb32b51a7d9fb0cc6fcad4f1a8840f89a8e429",
+    "remuneration": "2391caf73f4f91a93db88a5a50fc50b874a7425c1a4fbc07a3835b85866d8b80",
+    "investment_SAVINGS_BOX": "e1a0b918bb7efd537dd7e41439b036d3aaaaa3d90c986ac56a054ca64236105b"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -273,6 +275,8 @@
     "totalInvested": "Total investido",
     "latestBalance": "Último saldo em",
     "investmentPositions": "Posições de investimento",
-    "savingsBoxes": "Caixinhas"
+    "savingsBoxes": "Caixinhas",
+    "remuneration": "Remuneração",
+    "investment_SAVINGS_BOX": "Caixinha"
   }
 }
