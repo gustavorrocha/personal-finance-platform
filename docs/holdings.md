@@ -6,6 +6,12 @@ Open **Accounts** (**Contas**) in the dashboard. The view follows the dashboard'
 language preference. Select a connection to see each reported balance with its
 currency and observation time in UTC.
 
+The bank balance summary adds the latest reported bank balances within the
+selected connection and shows a separate total per currency. It flags missing
+bank balances or currencies, excludes credit cards and investments, and hides
+the summary when the account list is truncated. The underlying observations
+can have different timestamps.
+
 The localhost API exposes the latest reported account observation per account
 and connection at `GET /api/accounts`. A single connection is selected
 automatically. When more than one is available, use its pseudonymous ID from
