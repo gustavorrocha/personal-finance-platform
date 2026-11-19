@@ -30,7 +30,8 @@ TRANSACTION_DETAILS = (
     "description, bank_category, "
     "concat(replaceOne(toString(transaction_time), ' ', 'T'), 'Z') AS transaction_time, "
     "original_purchase_date, installment_number, total_installments, "
-    "toString(installment_total_amount) AS installment_total_amount "
+    "toString(installment_total_amount) AS installment_total_amount, "
+    "mcc, cnpj, cnae, business_name, merchant_category "
 )
 
 

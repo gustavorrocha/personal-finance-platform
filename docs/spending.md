@@ -138,6 +138,14 @@ movements keep their direction, net amount, income tax, IOF and the sum of
 brokerage, custody, exchange and other fees. These columns live in
 `core.provider_versions`.
 
+Transactions keep the merchant's reported identity: CNPJ, CNAE, business name
+and activity, the card MCC, and the provider category code. When a transfer
+goes to or comes from a company, its CNPJ and name identify the merchant.
+Personal documents and names of people stay in Bronze. A transfer whose other
+side has the same CPF as an account holder of that connection is a transfer
+between own accounts: it is never spending and appears in
+`analytics.own_transfers`.
+
 Card transactions are never investment movements. Rebuild the projections from
 Bronze after applying the migrations to classify earlier imports.
 

@@ -136,5 +136,8 @@
   "investmentPositions": "Investment positions",
   "savingsBoxes": "Savings boxes",
   "remuneration": "Remuneration",
-  "investment_SAVINGS_BOX": "Savings box"
+  "investment_SAVINGS_BOX": "Savings box",
+  "cnpj": "CNPJ",
+  "cnae": "CNAE",
+  "mcc": "MCC"
 }

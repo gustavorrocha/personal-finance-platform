@@ -79,13 +79,61 @@ def investment_kind(record: dict) -> str:
     return ""
 
 
+def digits(value: object) -> str:
+    return re.sub(r"\D", "", value) if isinstance(value, str) else ""
+
+
+def printable(value: object, limit: int = 120) -> str:
+    return value.strip()[:limit] if isinstance(value, str) and value.isprintable() else ""
+
+
+def merchant_fields(record: dict) -> dict:
+    """Business identity reported for the merchant or the other side of a transfer."""
+    merchant = record.get("merchant")
+    merchant = merchant if isinstance(merchant, dict) else {}
+    card = record.get("creditCardMetadata")
+    mcc = card.get("payeeMCC") if isinstance(card, dict) else None
+    payment = record.get("paymentData")
+    payment = payment if isinstance(payment, dict) else {}
+    # The other side: who received a debit or who sent a credit.
+    side = payment.get("receiver" if record.get("type") == "DEBIT" else "payer")
+    side = side if isinstance(side, dict) else {}
+    document = side.get("documentNumber")
+    document = document if isinstance(document, dict) else {}
+    kind = document.get("type") if document.get("type") in ("CPF", "CNPJ") else ""
+    company = kind == "CNPJ" and len(digits(document.get("value"))) == 14
+    category_id = record.get("categoryId")
+    return {
+        "category_id": category_id
+        if isinstance(category_id, str) and category_id.isdigit()
+        else "",
+        "mcc": mcc if type(mcc) is int and 0 < mcc < 10000 else None,
+        "merchant_cnpj": digits(merchant.get("cnpj"))
+        if len(digits(merchant.get("cnpj"))) == 14
+        else "",
+        "merchant_cnae": digits(merchant.get("cnae"))[:7],
+        "merchant_business_name": printable(merchant.get("businessName")),
+        "merchant_category": printable(merchant.get("category"), 80),
+        "counterparty_type": kind,
+        # Personal documents and names stay in Bronze; only companies are identified.
+        "counterparty_cnpj": digits(document.get("value")) if company else "",
+        "counterparty_name": printable(side.get("name")) if company else "",
+    }
+
+
 def normalize(value: object) -> str:
     if not isinstance(value, str):
         return ""
     return " ".join(re.findall(r"[^\W\d_]+", unicodedata.normalize("NFKC", value[:256]).casefold()))
 
 
-def spending_fields(record: dict, transaction_key: str, *, card_account: bool = False) -> dict:
+def spending_fields(
+    record: dict,
+    transaction_key: str,
+    *,
+    card_account: bool = False,
+    owners: frozenset[str] = frozenset(),
+) -> dict:
     operation = record.get("operationType")
     operation = operation.upper().strip() if isinstance(operation, str) else ""
     payment_data = record.get("paymentData")
@@ -97,7 +145,19 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
     hint = PROVIDER_CATEGORIES.get(provider_category, "")
     merchant = record.get("merchant")
     name = merchant.get("name") if isinstance(merchant, dict) else None
-    merchant_name = name.strip() if isinstance(name, str) else ""
+    business = merchant_fields(record)
+    # A company on the other side of a transfer names the merchant when the provider does not.
+    merchant_name = name.strip() if isinstance(name, str) else business["counterparty_name"]
+    payment = record.get("paymentData")
+    side = (
+        payment.get("receiver" if direction == "DEBIT" else "payer")
+        if isinstance(payment, dict)
+        else None
+    )
+    document = side.get("documentNumber") if isinstance(side, dict) else None
+    own_transfer = bool(owners) and (
+        digits(document.get("value")) in owners if isinstance(document, dict) else False
+    )
     label = merchant_name[:80] if merchant_name.isprintable() else ""
     merchant_match = normalize(merchant_name)
     match = merchant_match or normalize(record.get("description"))
@@ -119,6 +179,7 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
     investment = "" if card_account else investment_kind(record)
     excluded = (
         bool(investment)
+        or own_transfer
         or (operation in NON_SPENDING and not mislabeled_card_purchase)
         or any(
             word in provider_category
@@ -137,7 +198,8 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
                 or isinstance(record.get("creditCardMetadata"), dict)
             )
             kind = "purchase" if has_evidence else "review"
-    return {
+    return business | {
+        "own_transfer": own_transfer,
         "investment_kind": investment,
         "spending_kind": kind,
         "spending_category": hint,
