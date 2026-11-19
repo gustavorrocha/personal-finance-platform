@@ -129,7 +129,7 @@ def test_account_snapshot_scopes_distinct_connections_and_keeps_reported_values(
 
         assert load_demo(silver) == 16
         for _ in range(2):
-            assert load_account_demo(silver) == 4
+            assert load_account_demo(silver) == 7
         report = client.get("/api/accounts").json()
         demo = next(connection for connection in report["connections"] if connection["is_demo"])
         preview = client.get("/api/accounts", params={"item": demo["id"]}).json()

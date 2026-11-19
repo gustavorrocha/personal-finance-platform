@@ -4,7 +4,7 @@ import {
   categoryLabel,
   deviceLocale,
   formatDate,
-  formatInvestmentValue,
+  formatReportedValue,
   formatMoney,
   monthChoices,
 } from "./locale.ts";
@@ -19,15 +19,15 @@ test("device language chooses the first supported browser preference", () => {
 
 test("reported investment decimals keep their precision and distinguish zero from missing", () => {
   assert.equal(
-    formatInvestmentValue("9007199254740993.000000000001", "en-US"),
+    formatReportedValue("9007199254740993.000000000001", "en-US"),
     "9,007,199,254,740,993.000000000001",
   );
   assert.equal(
-    formatInvestmentValue("-0.000000000001", "pt-BR"),
+    formatReportedValue("-0.000000000001", "pt-BR"),
     "-0,000000000001",
   );
-  assert.equal(formatInvestmentValue("0", "pt-BR"), "0");
-  assert.equal(formatInvestmentValue(null, "pt-BR"), "Indisponível");
+  assert.equal(formatReportedValue("0", "pt-BR"), "0");
+  assert.equal(formatReportedValue(null, "pt-BR"), "Indisponível");
 });
 
 test("Portuguese category labels leave saved identifiers available in English", () => {

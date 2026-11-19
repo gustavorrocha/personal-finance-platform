@@ -28,8 +28,14 @@ Start-Process 'http://127.0.0.1:8080/#accounts'
 
 The demo shows BRL 1,850.75 for a bank account, BRL -320.40 for a credit card,
 and one USD account with an unavailable balance. Its accounts use the same
-synthetic connection as the spending demo. Loading the fixture again replays
-the same observation.
+synthetic connection as the spending demo. Under **Balance history**
+(**Histórico de saldos**), choose the credit card to see its previous zero
+balance. Loading the fixture again replays the same observations.
+
+Chrome verified the history in English at desktop width and in Brazilian
+Portuguese at mobile width. In both cases, keyboard selection distinguished a
+zero balance from an unavailable balance and cleared the previous account's
+history when the connection changed.
 
 The account test also uses two separate synthetic connections that each report
 a BRL 42 balance. It verifies exact values, timestamps and scope isolation.

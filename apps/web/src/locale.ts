@@ -27,6 +27,12 @@ export const messages = {
     observedAt: "Observed (UTC)",
     unavailable: "Unavailable",
     accountLimit: "Showing the first 200 accounts for this connection.",
+    accountHistory: "Balance history",
+    selectHistoryAccount: "Select an account",
+    loadingHistory: "Loading balance history…",
+    historyError: "Balance history could not be loaded.",
+    noHistory: "No balance observations are available for this account.",
+    historyLimit: "Showing the 90 most recent observations.",
     investments: "Investments",
     loadingInvestments: "Loading investments…",
     investmentsError: "Investments could not be loaded.",
@@ -121,6 +127,12 @@ export const messages = {
     observedAt: "Observado (UTC)",
     unavailable: "Indisponível",
     accountLimit: "Exibindo as primeiras 200 contas desta conexão.",
+    accountHistory: "Histórico de saldos",
+    selectHistoryAccount: "Selecione uma conta",
+    loadingHistory: "Carregando histórico de saldos…",
+    historyError: "Não foi possível carregar o histórico de saldos.",
+    noHistory: "Não há registros de saldo disponíveis para esta conta.",
+    historyLimit: "Exibindo os 90 registros mais recentes.",
     investments: "Investimentos",
     loadingInvestments: "Carregando investimentos…",
     investmentsError: "Não foi possível carregar os investimentos.",
@@ -221,7 +233,7 @@ export function formatMoney(
   );
 }
 
-export function formatInvestmentValue(
+export function formatReportedValue(
   amount: string | null,
   locale: Locale,
 ): string {
