@@ -16,7 +16,7 @@ from finance_pluggy.coverage import audit_from_environment, configured_client, i
 
 from .collection import collect, entity_key, item_key
 from .silver import SilverWarehouse
-from .spending_demo import load_demo
+from .spending_demo import load_account_demo, load_demo, load_investment_demo
 from .synthetic import capture_synthetic
 from .warehouse import BronzeWarehouse
 
@@ -121,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
     sync_parser = commands.add_parser("sync", help="Collect existing provider items")
     sync_parser.add_argument("--full", action="store_true", help="Read full available history")
     commands.add_parser("demo-spending", help="Load a synthetic spending connection")
+    commands.add_parser("demo-accounts", help="Load synthetic account balances")
+    commands.add_parser("demo-investments", help="Load synthetic investment positions")
     deletions = commands.add_parser(
         "apply-deletions", help="Read a reviewed provider event on stdin"
     )
@@ -200,6 +202,10 @@ def main(argv: list[str] | None = None) -> int:
             exit_code = int(any(run["status"] in ("failed", "partial") for run in summary["runs"]))
         elif args.command == "demo-spending":
             summary = {"status": "complete", "records": load_demo(silver)}
+        elif args.command == "demo-accounts":
+            summary = {"status": "complete", "records": load_account_demo(silver)}
+        elif args.command == "demo-investments":
+            summary = {"status": "complete", "records": load_investment_demo(silver)}
         elif args.command == "apply-deletions":
             raw = sys.stdin.buffer.read(1024 * 1024 + 1)
             if len(raw) > 1024 * 1024:

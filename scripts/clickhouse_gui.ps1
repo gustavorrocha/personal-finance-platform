@@ -1,7 +1,7 @@
 param([switch]$Disable)
 . "$PSScriptRoot/common.ps1"
 Import-LocalConfig
-$compose = @('compose', '--env-file', '.env', '-f', 'infra/compose.yaml', '-f', 'infra/compose.gui.yaml')
+$compose = Get-ComposeArguments -WithGui
 if ($Disable) {
     Invoke-Checked docker ($compose + @('rm', '-s', '-f', 'clickhouse-gui'))
     Invoke-Compose @('up', '-d', '--wait', 'clickhouse', 'api', 'web')

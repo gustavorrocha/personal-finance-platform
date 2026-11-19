@@ -1,0 +1,9 @@
+services:
+  clickhouse:
+    volumes:
+      - clickhouse-storage:/var/lib/clickhouse
+
+volumes:
+  clickhouse-storage:
+    external: true
+    name: ${FINANCE_CLICKHOUSE_VOLUME:?Configure an existing ClickHouse recovery volume}

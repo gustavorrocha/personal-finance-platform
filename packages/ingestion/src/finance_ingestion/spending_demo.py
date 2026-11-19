@@ -79,9 +79,89 @@ def publish_demo(
     name: str,
     rows: list[dict],
 ) -> int:
+    return commit_demo(
+        silver,
+        item,
+        name,
+        datetime(2026, 11, 17, tzinfo=UTC),
+        [
+            CapturePage(
+                "accounts", json_bytes({"results": [{"id": account, "type": account_type}]})
+            ),
+            CapturePage(
+                "transactions",
+                json_bytes({"results": rows, "next": None}),
+                entity_key(item, "accounts", account),
+            ),
+        ],
+    )
+
+
+def load_account_demo(silver: SilverWarehouse) -> int:
+    item = item_key(DEMO_SOURCE)
+    previous = [
+        {"id": REVIEW_ACCOUNT, "type": "BANK", "balance": 1700.50, "currencyCode": "BRL"},
+        {"id": DEMO_ACCOUNT, "type": "CREDIT", "balance": 0, "currencyCode": "BRL"},
+    ]
+    previous_count = commit_demo(
+        silver,
+        item,
+        "account-demo-history-v1",
+        datetime(2026, 11, 17, tzinfo=UTC),
+        [CapturePage("accounts", json_bytes({"results": previous}))],
+    )
+    accounts = [
+        {"id": REVIEW_ACCOUNT, "type": "BANK", "balance": 1850.75, "currencyCode": "BRL"},
+        {"id": DEMO_ACCOUNT, "type": "CREDIT", "balance": -320.40, "currencyCode": "BRL"},
+        {"id": "10000000-0000-4000-8000-100000000004", "type": "BANK", "currencyCode": "USD"},
+    ]
+    return previous_count + commit_demo(
+        silver,
+        item,
+        "account-demo-v1",
+        datetime(2026, 11, 18, tzinfo=UTC),
+        [CapturePage("accounts", json_bytes({"results": accounts}))],
+    )
+
+
+def load_investment_demo(silver: SilverWarehouse) -> int:
+    item = item_key(DEMO_SOURCE)
+    positions = [
+        {
+            "id": str(uuid5(item, "investment-demo-equity")),
+            "code": "DEMO11",
+            "type": "EQUITY",
+            "currencyCode": "BRL",
+            "amount": 120.25,
+            "balance": 115.20,
+            "quantity": 5,
+            "value": 24.05,
+            "date": "2026-11-17",
+        },
+        {
+            "id": str(uuid5(item, "investment-demo-fixed-income")),
+            "type": "FIXED_INCOME",
+            "currencyCode": "BRL",
+            "amount": 800,
+            "date": "2026-11-17",
+            "dueDate": "2028-11-17",
+        },
+    ]
+    return commit_demo(
+        silver,
+        item,
+        "investment-demo-v1",
+        datetime(2026, 11, 18, tzinfo=UTC),
+        [CapturePage("investments", json_bytes({"results": positions}))],
+    )
+
+
+def commit_demo(
+    silver: SilverWarehouse, item: UUID, name: str, observed: datetime, pages: list[CapturePage]
+) -> int:
     manifest = silver.lake.commit(
         run_id=uuid5(NAMESPACE_URL, f"finance:{name}"),
-        retrieved_at=datetime(2026, 11, 17, tzinfo=UTC),
+        retrieved_at=observed,
         item_alias=f"item-{item.hex}",
         capture_kind="full",
         payloads=[
@@ -95,14 +175,7 @@ def publish_demo(
                     }
                 ),
             ),
-            CapturePage(
-                "accounts", json_bytes({"results": [{"id": account, "type": account_type}]})
-            ),
-            CapturePage(
-                "transactions",
-                json_bytes({"results": rows, "next": None}),
-                entity_key(item, "accounts", account),
-            ),
+            *pages,
         ],
     )
     return silver.replay(manifest.run_id)
