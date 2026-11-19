@@ -98,14 +98,26 @@ def publish_demo(
 
 
 def load_account_demo(silver: SilverWarehouse) -> int:
+    item = item_key(DEMO_SOURCE)
+    previous = [
+        {"id": REVIEW_ACCOUNT, "type": "BANK", "balance": 1700.50, "currencyCode": "BRL"},
+        {"id": DEMO_ACCOUNT, "type": "CREDIT", "balance": 0, "currencyCode": "BRL"},
+    ]
+    previous_count = commit_demo(
+        silver,
+        item,
+        "account-demo-history-v1",
+        datetime(2026, 11, 17, tzinfo=UTC),
+        [CapturePage("accounts", json_bytes({"results": previous}))],
+    )
     accounts = [
         {"id": REVIEW_ACCOUNT, "type": "BANK", "balance": 1850.75, "currencyCode": "BRL"},
         {"id": DEMO_ACCOUNT, "type": "CREDIT", "balance": -320.40, "currencyCode": "BRL"},
         {"id": "10000000-0000-4000-8000-100000000004", "type": "BANK", "currencyCode": "USD"},
     ]
-    return commit_demo(
+    return previous_count + commit_demo(
         silver,
-        item_key(DEMO_SOURCE),
+        item,
         "account-demo-v1",
         datetime(2026, 11, 18, tzinfo=UTC),
         [CapturePage("accounts", json_bytes({"results": accounts}))],

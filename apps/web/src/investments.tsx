@@ -1,6 +1,6 @@
 import {
   formatDate,
-  formatInvestmentValue,
+  formatReportedValue,
   investmentTypeLabel,
   messages,
   type Locale,
@@ -32,7 +32,7 @@ export function InvestmentsView({ locale }: { locale: Locale }) {
   });
 
   function value(amount: string | null) {
-    return formatInvestmentValue(amount, locale);
+    return formatReportedValue(amount, locale);
   }
 
   function date(day: string | null) {
