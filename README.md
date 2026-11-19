@@ -140,3 +140,17 @@ See the [implementation plan](docs/implementation-plan.md), [operations runbook]
 [threat model](docs/threat-model.md), and [ADRs](docs/adr/README.md). Acceptance tests use
 synthetic data. Disk encryption, independent backups, and an approved retention policy
 are operational prerequisites for real data.
+
+## Interface translations
+
+Edit `apps/web/src/messages.en-US.json` and regenerate Brazilian Portuguese using
+an installed local Ollama model while the stack is running.
+
+```powershell
+npm --prefix apps/web run translate -- --model qwen3:1.7b
+```
+
+Review and commit the generated catalog. The translator sends only interface
+strings to local Ollama and regenerates only new or changed entries. Lint checks
+for stale translations and mismatched placeholders. Builds use the checked-in
+catalogs. Spending categories and event descriptions display as supplied.
