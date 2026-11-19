@@ -90,8 +90,10 @@ shows net balance, gross amount, currency, quantity, unit price, reference date,
 maturity date, and UTC observation time. A missing amount appears as unavailable.
 Use the reference date to tell when a reported value applies.
 
-The investment summary adds reported net balances by currency and shows their
-UTC observation range. Positions with only a gross amount are flagged as
+The investment summary adds reported net balances by currency. It shows both
+the financial reference date range and the UTC observation range for the
+positions included in each total. Missing reference dates are flagged.
+Positions with only a gross amount are flagged as
 missing from the total. The summary is hidden when the position list is
 truncated.
 

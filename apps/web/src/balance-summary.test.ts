@@ -52,13 +52,15 @@ test("bank totals preserve decimals and currencies while excluding cards and mis
   );
 });
 
-test("investment totals use net balances and flag positions with only a gross amount", () => {
+test("investment totals track dates only for contributing net balances", () => {
   const observed_at = "2026-11-18T10:00:00.000000Z";
   const position = { currency: "BRL", gross_amount: "900", observed_at };
   const { totals, unavailable } = summarizeInvestmentBalances([
-    { ...position, net_balance: "115.20" },
-    { ...position, net_balance: null },
-    { ...position, currency: "USD", net_balance: "10" },
+    { ...position, net_balance: "115.20", reference_date: "2026-11-17" },
+    { ...position, net_balance: "0", reference_date: "2026-11-16" },
+    { ...position, net_balance: "0", reference_date: null },
+    { ...position, net_balance: null, reference_date: "2026-01-01" },
+    { ...position, currency: "USD", net_balance: "10", reference_date: null },
   ]);
   assert.equal(unavailable, 1);
   assert.deepEqual(
@@ -66,6 +68,13 @@ test("investment totals use net balances and flag positions with only a gross am
     [
       ["BRL", "115.200000000000"],
       ["USD", "10.000000000000"],
+    ],
+  );
+  assert.deepEqual(
+    totals.map((total) => total.referenceDates),
+    [
+      { oldest: "2026-11-16", newest: "2026-11-17", missing: true },
+      { oldest: null, newest: null, missing: true },
     ],
   );
 });
