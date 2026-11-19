@@ -270,7 +270,16 @@ export function MonthlyComparison({
   );
 }
 
-export function CategoryComparison({ rows, month, locale }: Props) {
+export function CategoryComparison({
+  rows,
+  month,
+  locale,
+  onSelect,
+  disabled,
+}: Props & {
+  onSelect: (category: string, subcategory?: string) => void;
+  disabled: boolean;
+}) {
   const copy = messages[locale];
   return (
     <>
@@ -297,36 +306,64 @@ export function CategoryComparison({ rows, month, locale }: Props) {
         return (
           <div className="chart" key={currency}>
             <h3>{currency}</h3>
-            {entries.map((row) => (
-              <div
-                className="compare"
-                key={row.category}
-                title={`${copy.previousMonth}: ${money(row.previous)}`}
-              >
-                <span>{row.category}</span>
-                <span className="compare-bars" aria-hidden="true">
-                  <i
-                    className="swatch bank"
-                    style={{ width: width(row.current) }}
-                  />
-                  <i
-                    className="swatch previous"
-                    style={{ width: width(row.previous) }}
-                  />
-                </span>
-                <span>
-                  {money(row.current)}
-                  <small>
-                    {copy.previousMonth}: {money(row.previous)}
-                  </small>
-                </span>
-                <span>
-                  <ChangeText
-                    current={row.current}
-                    previous={row.previous}
-                    locale={locale}
-                  />
-                </span>
+            {entries.map((group) => (
+              <div className="category-block" key={group.category}>
+                {[
+                  { ...group, parent: group.category, child: false },
+                  ...group.subcategories.map((row) => ({
+                    ...row,
+                    parent: group.category,
+                    child: true,
+                  })),
+                ].map((row) => (
+                  <div
+                    className={row.child ? "compare child" : "compare"}
+                    key={`${row.child}-${row.category}`}
+                    title={`${copy.previousMonth}: ${money(row.previous)}`}
+                  >
+                    <button
+                      type="button"
+                      className="link-button"
+                      disabled={disabled}
+                      aria-label={`${copy.showExpensesOf} ${
+                        row.child
+                          ? `${row.parent || copy.uncategorized} › ${row.category || copy.noSubcategory}`
+                          : row.category || copy.uncategorized
+                      }`}
+                      onClick={() =>
+                        row.child
+                          ? onSelect(row.parent, row.category)
+                          : onSelect(row.category)
+                      }
+                    >
+                      {row.category ||
+                        (row.child ? copy.noSubcategory : copy.uncategorized)}
+                    </button>
+                    <span className="compare-bars" aria-hidden="true">
+                      <i
+                        className="swatch bank"
+                        style={{ width: width(row.current) }}
+                      />
+                      <i
+                        className="swatch previous"
+                        style={{ width: width(row.previous) }}
+                      />
+                    </span>
+                    <span>
+                      {money(row.current)}
+                      <small>
+                        {copy.previousMonth}: {money(row.previous)}
+                      </small>
+                    </span>
+                    <span>
+                      <ChangeText
+                        current={row.current}
+                        previous={row.previous}
+                        locale={locale}
+                      />
+                    </span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -532,4 +569,83 @@ export function InvestedTotal({
       </div>
     );
   });
+}
+
+/** Invested money at the end of each month: today's reported balances, minus the
+ * contributions and plus the withdrawals made after that month. */
+export function InvestedEvolution({
+  rows,
+  locale,
+}: {
+  rows: { month: string; currency: string; total: string }[];
+  locale: Locale;
+}) {
+  const copy = messages[locale];
+  return (
+    <>
+      <p>{copy.investedEvolutionHelp}</p>
+      {[...new Set(rows.map((row) => row.currency))].sort().map((currency) => {
+        const points = rows.filter((row) => row.currency === currency);
+        const values = points.map((row) => Number(row.total));
+        const max = Math.max(1, ...values);
+        const money = (value: number) =>
+          formatMoney(String(value), currency, locale);
+        return (
+          <div className="chart" key={currency}>
+            <h3>{currency}</h3>
+            <div className="month-chart" role="list">
+              {points.map((row, index) => (
+                <div
+                  className="month-column"
+                  role="listitem"
+                  key={row.month}
+                  aria-label={`${monthLabel(row.month, locale)}: ${money(values[index])}`}
+                >
+                  <span className="month-tooltip" aria-hidden="true">
+                    <b>{monthLabel(row.month, locale, true)}</b>
+                    <span>{money(values[index])}</span>
+                  </span>
+                  <span className="month-plot" aria-hidden="true">
+                    <span
+                      className="month-stack"
+                      style={{
+                        height: `${(Math.max(0, values[index]) / max) * 100}%`,
+                      }}
+                    >
+                      <span
+                        className="swatch invested"
+                        style={{ flexGrow: 1 }}
+                      />
+                    </span>
+                  </span>
+                  <span className="month-label" aria-hidden="true">
+                    {monthLabel(row.month, locale)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <details>
+              <summary>{copy.showTable}</summary>
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">{copy.month}</th>
+                    <th scope="col">{copy.totalInvested}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {points.map((row, index) => (
+                    <tr key={row.month}>
+                      <td>{monthLabel(row.month, locale, true)}</td>
+                      <td>{money(values[index])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          </div>
+        );
+      })}
+    </>
+  );
 }

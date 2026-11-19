@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -93,12 +93,17 @@ def test_spending_requires_purchase_evidence_and_excludes_transfers_and_settleme
             spending_fields({**debit, "operationType": operation}, "tx")["spending_kind"]
             == "review"
         )
-        assert (
-            spending_fields({**debit, "operationType": operation, "category": "Transfer"}, "tx")[
-                "spending_kind"
-            ]
-            == ""
-        )
+        transfer = {**debit, "operationType": operation, "category": "Transfer - PIX"}
+        assert spending_fields(transfer, "tx")["spending_kind"] == "review"
+        own = {**transfer, "category": "Same person transfer"}
+        assert spending_fields(own, "tx")["spending_kind"] == ""
+        utility = {**debit, "operationType": operation, "categoryId": "17020002"}
+        assert spending_fields(utility, "tx")["spending_kind"] == "purchase"
+        boleto = {**utility, "categoryId": "05000000", "category": "Transfers"}
+        assert spending_fields(boleto, "tx")["spending_kind"] == "review"
+    for description in ("Pagamento de fatura", "Pagamento cartão de crédito"):
+        bill = {"type": "DEBIT", "description": description, "categoryId": "05000000"}
+        assert spending_fields(bill, "tx")["spending_kind"] == ""
     refund = {**card, "type": "CREDIT", "operationType": "ESTORNO"}
     assert spending_fields(refund, "tx")["spending_kind"] == "refund"
     assert (
@@ -121,7 +126,7 @@ def test_category_corrections_require_local_origin_and_validate_before_database(
     body = {
         "item": "10000000-0000-4000-8000-100000000001",
         "transaction": "10000000-0000-4000-8000-100000000002",
-        "category": "Dining",
+        "category": "10000000-0000-4000-8000-100000000003",
     }
     with TestClient(app) as client:
         assert client.post("/api/spending/rules", json=body).status_code == 403
@@ -249,12 +254,28 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         "descriptionRaw": "COMPRA *Loja de teste",
         "date": "2024-11-10T16:25:00Z",
         "category": "Office supplies",
+        "categoryId": "08080000",
     }
     observe(
         NEW_ITEM,
         "CREDIT",
         [
             {"amount": 25, "operationType": "PAGAMENTO", "creditCardMetadata": {}},
+            # Outside the charted window: rule precedence only.
+            *(
+                {
+                    "amount": amount,
+                    "date": "2023-01-10",
+                    "descriptionRaw": label,
+                    "categoryId": provider,
+                    "creditCardMetadata": {"payeeMCC": 5812},
+                }
+                for label, amount, provider in (
+                    ("Broad provider", 3, "10000000"),
+                    ("Specific provider", 4, "11020000"),
+                    ("Unmapped provider", 5, "55550000"),
+                )
+            ),
             {"amount": 55, "type": "CREDIT", "operationType": "PAGAMENTO_FATURA"},
             pending_purchase,
             {**pending_purchase, "id": str(uuid4()), "amount": -9},
@@ -321,6 +342,16 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
             "WHERE savings_box != '' ORDER BY kind FORMAT TSV"
         )
         assert flows.splitlines() == ["contribution	Viagem", "withdrawal	Viagem"]
+        precedence = execute_sql(
+            "SELECT description, category_rule, category, subcategory "
+            "FROM analytics.spending_dashboard WHERE economic_date = '2023-01-10' "
+            "ORDER BY description FORMAT TSV"
+        )
+        assert precedence.splitlines() == [
+            "Broad provider	mcc	Alimentação	Restaurantes e bares",
+            "Specific provider	provider	Alimentação	Delivery",
+            "Unmapped provider	mcc	Alimentação	Restaurantes e bares",
+        ]
         positions = client.get("/api/investments", params={"item": str(item_key(ITEM))}).json()
         assert {row["name"] for row in positions["positions"]} == {
             "Casa",
@@ -329,7 +360,7 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
             "Viagem",
         }
         assert {row["category"] for row in page["history"] if row["status"] == "PENDING"} == {
-            "Office supplies"
+            "Compras"
         }
         assert {row["item"] for row in page["expenses"]} == {
             str(item_key(s)) for s in (ITEM, NEW_ITEM)
@@ -343,7 +374,8 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         purchase = searched["expenses"][0]
         assert purchase["description"] == "COMPRA *Loja de teste"
         assert purchase["status"] == "PENDING"
-        assert purchase["category"] == "Office supplies"
+        assert purchase["category"] == "Compras" and purchase["category_rule"] == "provider"
+        assert purchase["bank_category"] == "Office supplies"
         assert purchase["transaction_time"] == "2024-11-10T16:25:00.000000Z"
         assert (purchase["installment_number"], purchase["total_installments"]) == (2, 4)
         monkeypatch.setattr(spending, "EXPENSE_PAGE_SIZE", 1)
@@ -395,9 +427,13 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         eligible = next(row for row in page["expenses"] if row["merchant"] == "Corner Bookshop")
         classified = next(row for row in page["expenses"] if row["merchant"] == "West Market")
 
-        async def suggest(_client, merchants):
-            assert merchants == ["Corner Bookshop"]
-            return ["Shopping"]
+        categories = {row["name"]: row["id"] for row in page["categories"]}
+        assert {"Alimentação", "Delivery", "Compras", "Moradia"} <= set(categories)
+
+        async def suggest(_client, merchants, labels):
+            assert sorted(merchants) == ["Corner Bookshop", "West Market"]
+            assert "Alimentação / Delivery" in labels and "Compras" in labels
+            return ["Compras" if merchant == "Corner Bookshop" else None for merchant in merchants]
 
         monkeypatch.setattr(spending.classifier, "suggest", suggest)
         suggestion_request = {
@@ -411,7 +447,11 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
             json=suggestion_request,
         )
         assert suggested.status_code == 200
-        assert suggested.json() == {"suggestions": [{"id": eligible["id"], "category": "Shopping"}]}
+        assert suggested.json() == {
+            "suggestions": [
+                {"id": eligible["id"], "category": categories["Compras"], "label": "Compras"}
+            ]
+        }
         assert client.get("/api/spending").json() == page
         assert [row["merchant"] for row in page["reviews"]] == ["Harbor Books"]
         assert [row["operation"] for row in page["reviews"]] == ["PIX"]
@@ -424,13 +464,19 @@ def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_wareho
         response = client.post(
             "/api/spending/rules",
             headers={"Origin": "http://127.0.0.1:8080"},
-            json={"item": page["selected"]["id"], "transaction": row["id"], "category": "Home"},
+            json={
+                "item": page["selected"]["id"],
+                "transaction": row["id"],
+                "category": categories["Moradia"],
+            },
         )
         assert response.status_code == 204
         updated = client.get("/api/spending").json()
         assert {
-            row["category"] for row in updated["expenses"] if row["merchant"] == "West Market"
-        } == {"Home"}
+            (row["category"], row["category_rule"])
+            for row in updated["expenses"]
+            if row["merchant"] == "West Market"
+        } == {("Moradia", "merchant")}
         assert load_demo(silver) == 16
         assert client.get("/api/spending").json() == updated
         review = page["reviews"][0]
@@ -541,3 +587,258 @@ def test_merchant_identity_keeps_companies_and_recognizes_own_transfers():
     fields = spending_fields(card, "tx", card_account=True)
     assert (fields["mcc"], fields["merchant_cnae"]) == (5812, "5611203")
     assert fields["merchant_cnpj"] == "12345678000190"
+
+
+def test_categories_are_editable_two_level_and_rules_fall_back(isolated_warehouse, monkeypatch):
+    silver = isolated_warehouse()
+    load_demo(silver)
+
+    async def execute(query, **parameters):
+        return [json.loads(line) for line in silver.execute(query, **parameters).splitlines()]
+
+    monkeypatch.setattr(spending, "dashboard_query", execute)
+    local = {"Origin": "http://127.0.0.1:8080"}
+    with TestClient(app) as client:
+
+        def names():
+            return {
+                row["name"]: row
+                for row in client.get("/api/spending/categories").json()["categories"]
+            }
+
+        created = client.post("/api/spending/categories", headers=local, json={"name": " Pets "})
+        assert created.status_code == 201
+        pets = created.json()["id"]
+        food = client.post(
+            "/api/spending/categories", headers=local, json={"name": "Ração", "parent": pets}
+        ).json()["id"]
+        assert names()["Ração"]["parent_id"] == pets and names()["Pets"]["parent_id"] is None
+        third_level = {"name": "Seca", "parent": food}
+        assert (
+            client.post("/api/spending/categories", headers=local, json=third_level).status_code
+            == 409
+        )
+        groceries = names()["Supermercado"]["id"]
+        under_child = {"name": "Mercado", "parent": pets}
+        assert (
+            client.put(
+                f"/api/spending/categories/{groceries}", headers=local, json=under_child
+            ).status_code
+            == 204
+        )
+        assert names()["Mercado"]["parent_id"] == pets and "Supermercado" not in names()
+        moving_parent = {"name": "Pets", "parent": names()["Lazer"]["id"]}
+        assert (
+            client.put(
+                f"/api/spending/categories/{pets}", headers=local, json=moving_parent
+            ).status_code
+            == 409
+        )
+        assert client.post("/api/spending/categories", json={"name": "x"}).status_code == 403
+
+        page = client.get("/api/spending").json()
+        market = next(row for row in page["expenses"] if row["merchant"] == "West Market")
+        rule = {"item": page["selected"]["id"], "transaction": market["id"]}
+        assert (
+            client.post(
+                "/api/spending/rules",
+                headers=local,
+                json={**rule, "scope": "mcc", "category": food},
+            ).status_code
+            == 409
+        )
+        assert (
+            client.post(
+                "/api/spending/rules", headers=local, json={**rule, "category": food}
+            ).status_code
+            == 204
+        )
+
+        def market_categories():
+            return {
+                (row["category"], row["subcategory"])
+                for row in client.get("/api/spending").json()["expenses"]
+                if row["merchant"] == "West Market"
+            }
+
+        assert market_categories() == {("Pets", "Ração")}
+        json_headers = {**local, "Content-Type": "application/json"}
+        assert (
+            client.delete(f"/api/spending/categories/{pets}", headers=json_headers).status_code
+            == 204
+        )
+        assert "Pets" not in names() and "Ração" not in names()
+        assert market_categories() == {("", "")}
+
+
+def test_savings_box_outflows_and_recurring_entries_fill_unreported_spending(
+    isolated_warehouse, monkeypatch
+):
+    silver = isolated_warehouse()
+    load_demo(silver)
+    item = item_key(ITEM)
+    account = entity_key(item, "accounts", CARD)
+    landlord = "12345678000190"
+
+    def observe(observed, box_balance, transactions):
+        bank = {
+            "reservedBalances": [
+                {
+                    "name": "Gastos",
+                    "identification": "box-1",
+                    "availableAmounts": [{"amount": box_balance, "currencyCode": "BRL"}],
+                }
+            ]
+        }
+        record = {"id": CARD, "type": "BANK", "currencyCode": "BRL", "bankData": bank}
+        rows = [
+            {
+                "id": str(uuid4()),
+                "accountId": CARD,
+                "status": "POSTED",
+                "currencyCode": "BRL",
+                **row,
+            }
+            for row in transactions
+        ]
+        manifest = silver.lake.commit(
+            run_id=uuid4(),
+            retrieved_at=observed,
+            item_alias=f"item-{item.hex}",
+            capture_kind="full",
+            payloads=[
+                CapturePage(
+                    "items",
+                    json_bytes({"id": ITEM, "status": "UPDATED", "connector": {"id": 123}}),
+                ),
+                CapturePage("accounts", json_bytes({"results": [record]})),
+                CapturePage("transactions", json_bytes({"results": rows}), account),
+            ],
+        )
+        silver.replay(manifest.run_id)
+
+    rent = {
+        "type": "DEBIT",
+        "amount": 900,
+        "date": "2024-10-05",
+        "description": "Pagamento de conta Imobiliaria",
+        "categoryId": "17000000",
+        "paymentData": {
+            "paymentMethod": "BOLETO",
+            "receiver": {
+                "name": "Imobiliaria",
+                "documentNumber": {"type": "CNPJ", "value": landlord},
+            },
+        },
+    }
+    observe(WHEN, 1000, [rent])
+    withdrawal = {
+        "type": "CREDIT",
+        "amount": 200,
+        "date": "2024-11-11",
+        "description": "Dinheiro retirado Gastos",
+    }
+    observe(WHEN + timedelta(days=2), 300, [rent, withdrawal])
+
+    async def execute(query, **parameters):
+        return [json.loads(line) for line in silver.execute(query, **parameters).splitlines()]
+
+    monkeypatch.setattr(spending, "dashboard_query", execute)
+    local = {"Origin": "http://127.0.0.1:8080"}
+    with TestClient(app) as client:
+        page = client.get("/api/spending", params={"item": str(item), "month": "2024-11"}).json()
+        outflow = next(row for row in page["reviews"] if row["operation"] == "SAVINGS_BOX")
+        assert (outflow["date"], Decimal(outflow["amount"])) == ("2024-11-12", Decimal(500))
+        assert outflow["merchant"] == "Gastos" and outflow["decision"] == ""
+        include = {"item": str(item), "transaction": outflow["id"], "decision": "include"}
+        assert client.post("/api/spending/reviews", headers=local, json=include).status_code == 204
+
+        categories = {row["name"]: row["id"] for row in page["categories"]}
+        entry = {
+            "item": str(item),
+            "description": "Aluguel",
+            "amount": "950.00",
+            "category": categories["Aluguel e condomínio"],
+            "day": 31,
+            "start": "2024-09",
+            "end": "2024-11",
+            "cnpj": landlord,
+        }
+        assert client.post("/api/spending/manual", json=entry).status_code == 403
+        assert (
+            client.post(
+                "/api/spending/manual", headers=local, json={**entry, "end": "2024-08"}
+            ).status_code
+            == 422
+        )
+        created = client.post("/api/spending/manual", headers=local, json=entry)
+        assert created.status_code == 201
+
+        def manual_months():
+            rows = []
+            for month in ("2024-09", "2024-10", "2024-11"):
+                report = client.get("/api/spending", params={"item": str(item), "month": month})
+                rows += [
+                    (row["date"], row["amount"], row["subcategory"], row["category_rule"])
+                    for row in report.json()["expenses"]
+                    if row["merchant"] == "Aluguel"
+                ]
+            return rows
+
+        # October already has the reported boleto to the same CNPJ; November has 30 days.
+        assert manual_months() == [
+            ("2024-09-30", "950", "Aluguel e condomínio", "manual"),
+            ("2024-11-30", "950", "Aluguel e condomínio", "manual"),
+        ]
+        filtered = client.get(
+            "/api/spending",
+            params={
+                "item": str(item),
+                "month": "2024-11",
+                "category": "Moradia",
+                "subcategory": "Aluguel e condomínio",
+            },
+        ).json()
+        assert [row["merchant"] for row in filtered["expenses"]] == ["Aluguel"]
+        october = client.get("/api/spending", params={"item": str(item), "month": "2024-10"})
+        assert outflow["id"] in {row["id"] for row in october.json()["reviews"]}
+        november = client.get("/api/spending", params={"item": str(item), "month": "2024-11"})
+        totals = {row["bucket"]: Decimal(row["total"]) for row in november.json()["totals"]}
+        assert totals[None] == Decimal(1450)
+        listed = client.get("/api/spending/manual").json()["entries"]
+        assert [(row["description"], row["end"], row["cnpj"]) for row in listed] == [
+            ("Aluguel", "2024-11", landlord)
+        ]
+        json_headers = {**local, "Content-Type": "application/json"}
+        identifier = created.json()["id"]
+        assert (
+            client.delete(f"/api/spending/manual/{identifier}", headers=json_headers).status_code
+            == 204
+        )
+        assert manual_months() == []
+        assert client.get("/api/spending/manual").json()["entries"] == []
+
+
+def test_invested_history_subtracts_later_flows_from_todays_balance(monkeypatch):
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 3, 15)
+
+    monkeypatch.setattr(spending, "date", Today)
+    balances = [
+        {"currency": "BRL", "source": "positions", "total": "1000"},
+        {"currency": "BRL", "source": "savings_boxes", "total": "500"},
+    ]
+    flows = [
+        {"month": "2026-02", "currency": "BRL", "net": "300"},
+        {"month": "2026-03", "currency": "BRL", "net": "-100"},
+        {"month": "2025-12", "currency": "BRL", "net": "50"},
+    ]
+    history = spending.invested_history(balances, flows, "2026-04")
+    totals = {row["month"]: Decimal(row["total"]) for row in history}
+    assert len(totals) == 11 and "2026-04" not in totals
+    assert totals["2026-03"] == 1500
+    assert totals["2026-02"] == 1600
+    assert totals["2026-01"] == 1300
+    assert totals["2025-11"] == 1250

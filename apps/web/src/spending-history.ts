@@ -4,6 +4,7 @@ export type HistoryRow = {
   source: "bank" | "card";
   status: "POSTED" | "PENDING";
   category: string;
+  subcategory?: string;
   total: string;
   entries: string | number;
 };
@@ -56,13 +57,23 @@ export function monthlyTotals(
   });
 }
 
+type Comparison = { category: string; current: number; previous: number };
+
+function byAmount(a: Comparison, b: Comparison) {
+  return b.current - a.current || b.previous - a.previous;
+}
+
+/** Categories ("" when uncategorized), each with its subcategories, this month vs the previous. */
 export function categoryComparison(
   rows: HistoryRow[],
   currency: string,
   month: string,
-) {
+): (Comparison & { subcategories: Comparison[] })[] {
   const previous = previousMonth(month);
-  const categories = new Map<string, { current: number; previous: number }>();
+  const categories = new Map<
+    string,
+    Comparison & { children: Map<string, Comparison> }
+  >();
   for (const row of rows) {
     if (row.currency !== currency) continue;
     const key =
@@ -72,13 +83,34 @@ export function categoryComparison(
           ? "previous"
           : null;
     if (!key) continue;
-    const entry = categories.get(row.category) ?? { current: 0, previous: 0 };
-    entry[key] += Number(row.total);
+    const amount = Number(row.total);
+    const entry = categories.get(row.category) ?? {
+      category: row.category,
+      current: 0,
+      previous: 0,
+      children: new Map(),
+    };
+    entry[key] += amount;
+    const name = row.subcategory ?? "";
+    const child = entry.children.get(name) ?? {
+      category: name,
+      current: 0,
+      previous: 0,
+    };
+    child[key] += amount;
+    entry.children.set(name, child);
     categories.set(row.category, entry);
   }
-  return [...categories]
-    .map(([category, values]) => ({ category, ...values }))
-    .sort((a, b) => b.current - a.current || b.previous - a.previous);
+  return [...categories.values()]
+    .map(({ children, ...entry }) => ({
+      ...entry,
+      // Spending filed directly under the category has no subcategory name.
+      subcategories:
+        children.size === 1 && children.has("")
+          ? []
+          : [...children.values()].sort(byAmount),
+    }))
+    .sort(byAmount);
 }
 
 /** Relative change, or null when there is no prior spending to compare with. */

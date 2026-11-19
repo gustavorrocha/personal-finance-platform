@@ -9,15 +9,16 @@ import httpx
 from .local_classifier import BATCH_LIMIT, MODEL_TIMEOUT, LocalClassifier
 
 CASES = {
-    "Corner Bookshop": "Shopping",
-    "Metro Ticket Office": "Transport",
-    "Neighborhood Supermarket": "Groceries",
-    "Café da Praça": "Dining",
-    "Clínica Bom Jardim": "Health",
-    "City Cinema": "Leisure",
-    "Residential Electric Utility": "Home",
-    "Farmácia do Bairro": "Health",
+    "Corner Bookshop": "Compras",
+    "Metro Ticket Office": "Transporte / Transporte público",
+    "Neighborhood Supermarket": "Alimentação / Supermercado",
+    "Café da Praça": "Alimentação / Restaurantes e bares",
+    "Clínica Bom Jardim": "Saúde e bem-estar",
+    "City Cinema": "Lazer / Cinema, shows e eventos",
+    "Residential Electric Utility": "Moradia / Energia",
+    "Farmácia do Bairro": "Saúde e bem-estar / Farmácia",
 }
+LABELS = sorted({*CASES.values(), "Compras / Roupas e acessórios", "Moradia", "Lazer"})
 
 
 async def benchmark() -> None:
@@ -29,7 +30,7 @@ async def benchmark() -> None:
             predictions = []
             for start in range(0, len(labels), BATCH_LIMIT):
                 predictions.extend(
-                    await classifier.suggest(client, labels[start : start + BATCH_LIMIT])
+                    await classifier.suggest(client, labels[start : start + BATCH_LIMIT], LABELS)
                 )
             return predictions
 
