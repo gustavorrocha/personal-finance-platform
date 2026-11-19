@@ -4,6 +4,18 @@ import { fetchAccountHistory } from "./account-history.ts";
 
 afterEach(() => mock.restoreAll());
 
+test("expanded history keeps the scope and requests the maximum supported limit", async () => {
+  const signal = new AbortController().signal;
+  const fetch = mock.method(globalThis, "fetch", async () =>
+    Response.json({ observations: [], truncated: false }),
+  );
+  await fetchAccountHistory("item", "account", signal, 200);
+  assert.deepEqual(fetch.mock.calls[0].arguments, [
+    "/api/accounts/history?item=item&account=account&limit=200",
+    { signal },
+  ]);
+});
+
 test("account history requests only the selected connection and account", async () => {
   const signal = new AbortController().signal;
   const history = {
