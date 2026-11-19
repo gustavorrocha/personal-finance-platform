@@ -191,6 +191,193 @@ meter::-webkit-meter-optimum-value {
 meter::-moz-meter-bar {
   background: #3d8668;
 }
+.swatch {
+  display: inline-block;
+  min-width: 0.75rem;
+  min-height: 0.75rem;
+  border-radius: 0.15rem;
+}
+.swatch.bank {
+  background: #2a78b5;
+}
+.swatch.card {
+  background: #c96f2a;
+}
+.swatch.pending {
+  background: repeating-linear-gradient(45deg, #c96f2a 0 3px, #f3dcc8 3px 6px);
+}
+.swatch.invested {
+  background: #1f8a70;
+}
+.flow-plot {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  justify-items: center;
+}
+.flow-half {
+  display: flex;
+  align-items: flex-end;
+  width: min(100%, 2.25rem);
+}
+.flow-half:first-child {
+  border-bottom: 1px solid #8fa396;
+}
+.flow-half .swatch {
+  width: 100%;
+  min-height: 0;
+  border-radius: 4px 4px 0 0;
+}
+.flow-half.negative {
+  align-items: flex-start;
+}
+.flow-half.negative .swatch {
+  border-radius: 0 0 4px 4px;
+}
+.swatch.previous {
+  background: #b7c4bb;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  padding: 0;
+  margin: 0 0 1rem;
+  list-style: none;
+  font-size: 0.825rem;
+  color: #42594f;
+}
+.legend li,
+.breakdown dt {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.breakdown {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 1rem;
+  margin: 0.9rem 0;
+  font-size: 0.875rem;
+}
+.breakdown dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.month-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.35rem;
+  border-bottom: 1px solid #d4ded4;
+}
+.month-column {
+  position: relative;
+  display: grid;
+  grid-template-rows: 11rem auto;
+  gap: 0.35rem;
+  padding: 0.25rem 0.1rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: none;
+}
+.month-column:hover,
+.month-column[aria-pressed="true"] {
+  background: #edf2ec;
+}
+.month-column[aria-pressed="true"] .month-label {
+  font-weight: 750;
+}
+.month-plot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.month-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: min(100%, 2.25rem);
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+.month-stack > .swatch {
+  flex-basis: 0;
+  min-height: 0;
+  border-radius: 0;
+}
+.month-label {
+  font-size: 0.75rem;
+  color: #42594f;
+  white-space: nowrap;
+}
+.month-tooltip {
+  position: absolute;
+  bottom: calc(100% - 2rem);
+  left: 50%;
+  z-index: 1;
+  display: none;
+  min-width: 12rem;
+  padding: 0.6rem 0.75rem;
+  transform: translateX(-50%);
+  border: 1px solid #d4ded4;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(21 45 37 / 12%);
+  font-size: 0.8rem;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.month-column:first-child .month-tooltip {
+  left: 0;
+  transform: none;
+}
+.month-column:last-child .month-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.month-tooltip > * {
+  display: block;
+}
+.month-column:hover .month-tooltip,
+.month-column:focus-visible .month-tooltip {
+  display: block;
+}
+details {
+  margin-top: 0.9rem;
+  font-size: 0.875rem;
+}
+summary {
+  cursor: pointer;
+}
+.compare {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 0.75fr) 3fr minmax(6rem, 1fr) 3.5rem;
+  gap: 0.5rem;
+  align-items: center;
+  margin-block: 0.7rem;
+  font-size: 0.875rem;
+}
+.compare > span:nth-child(n + 3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.compare small {
+  display: block;
+  color: #42594f;
+  font-size: 0.75rem;
+}
+.compare-bars {
+  display: grid;
+  gap: 2px;
+}
+.compare-bars .swatch {
+  height: 0.7rem;
+  border-radius: 0 4px 4px 0;
+}
+.compare-bars .swatch.previous {
+  height: 0.35rem;
+}
 .table-wrap {
   overflow-x: auto;
 }
@@ -257,5 +444,23 @@ th:nth-child(3) {
   }
   .panel {
     padding: 0.85rem;
+  }
+  .month-chart {
+    gap: 0.1rem;
+  }
+  .month-column {
+    grid-template-rows: 8rem auto;
+  }
+  .month-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    justify-self: center;
+  }
+  .compare {
+    grid-template-columns: 1fr auto auto;
+  }
+  .compare-bars {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }

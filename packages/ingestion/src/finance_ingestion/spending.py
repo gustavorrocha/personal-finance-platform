@@ -41,6 +41,42 @@ NON_SPENDING = {
     "CASHBACK",
 }
 REFUNDS = {"ESTORNO", "REFUND"}
+# Pluggy category names; a debit moves money in, a credit takes it out.
+INVESTMENT_CATEGORIES = {
+    "investments",
+    "automatic investment",
+    "fixed income",
+    "mutual funds",
+    "variable income",
+    "pension",
+}
+INVESTMENT_INCOME = {"proceeds interests and dividends", "taxes on investments"}
+# Savings boxes ("caixinhas") arrive only as account transactions.
+SAVINGS_BOX = {"dinheiro reservado": "contribution", "dinheiro retirado": "withdrawal"}
+# Fixed-income movements that providers file as same-person transfers.
+FIXED_INCOME = r"(cdb|lca|lci|cra|cri|lf|tesouro|debentures?)\b"
+FIXED_INCOME_MOVES = {
+    re.compile(rf"^(compra|aplicacao|aplicação) {FIXED_INCOME}"): "contribution",
+    re.compile(rf"^(venda|vencimento|resgate) {FIXED_INCOME}"): "withdrawal",
+    re.compile(rf"^(cupom|irrf) {FIXED_INCOME}"): "income",
+}
+
+
+def investment_kind(record: dict) -> str:
+    category = normalize(record.get("category"))
+    description = normalize(record.get("descriptionRaw") or record.get("description"))
+    debit = record.get("type") == "DEBIT"
+    for prefix, kind in SAVINGS_BOX.items():
+        if description.startswith(prefix):
+            return kind
+    for pattern, kind in FIXED_INCOME_MOVES.items():
+        if pattern.match(description):
+            return kind
+    if category in INVESTMENT_INCOME:
+        return "income"
+    if category in INVESTMENT_CATEGORIES:
+        return "contribution" if debit else "withdrawal"
+    return ""
 
 
 def normalize(value: object) -> str:
@@ -80,8 +116,14 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
         and not isinstance(amount, bool)
         and amount > 0
     )
-    excluded = (operation in NON_SPENDING and not mislabeled_card_purchase) or any(
-        word in provider_category for word in ("transfer", "bill payment", "credit card payment")
+    investment = "" if card_account else investment_kind(record)
+    excluded = (
+        bool(investment)
+        or (operation in NON_SPENDING and not mislabeled_card_purchase)
+        or any(
+            word in provider_category
+            for word in ("transfer", "bill payment", "credit card payment")
+        )
     )
     kind = ""
     if not excluded:
@@ -96,6 +138,7 @@ def spending_fields(record: dict, transaction_key: str, *, card_account: bool = 
             )
             kind = "purchase" if has_evidence else "review"
     return {
+        "investment_kind": investment,
         "spending_kind": kind,
         "spending_category": hint,
         "spending_operation": operation if kind and operation in PAYMENT_RAILS else "",

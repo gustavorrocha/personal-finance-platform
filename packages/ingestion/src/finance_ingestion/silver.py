@@ -100,6 +100,21 @@ def transaction_details(record: dict) -> dict:
     }
 
 
+def reserved_balance(record: dict, currency: str | None) -> str | None:
+    """Sum money set aside inside an account, such as savings boxes."""
+    bank = record.get("bankData")
+    reserved = bank.get("reservedBalances") if isinstance(bank, dict) else None
+    if not isinstance(reserved, list):
+        return None
+    total = Decimal(0)
+    for box in reserved:
+        amounts = box.get("availableAmounts") if isinstance(box, dict) else None
+        for entry in amounts if isinstance(amounts, list) else []:
+            if isinstance(entry, dict) and entry.get("currencyCode") == currency:
+                total += Decimal(decimal_field(entry.get("amount")) or 0)
+    return decimal_field(total)
+
+
 def normalized_row(
     manifest: Manifest, item: UUID, entry: ReplayRecord, ordinal: int, cards: set[UUID]
 ) -> dict:
@@ -176,6 +191,8 @@ def normalized_row(
     if resource == "transactions":
         row.update(spending_fields(record, str(key), card_account=entry.scope_id in cards))
         row.update(transaction_details(record))
+    if resource == "accounts":
+        row["reserved_balance"] = reserved_balance(record, currency)
     if resource == "investments":
         row["rate_type"] = text_field(record.get("rateType"))
         row["symbol"] = text_field(record.get("code"))

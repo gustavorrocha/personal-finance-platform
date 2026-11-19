@@ -24,6 +24,8 @@ ORIGINS = {"http://localhost:8080", "http://127.0.0.1:8080"}
 DEMO_ITEM = "77b7ff50-da90-5c0d-b938-f4af43c8b6de"
 classifier = LocalClassifier()
 EXPENSE_PAGE_SIZE = 100
+# 12 charted months plus the month before them, so every month has a comparison.
+HISTORY_MONTHS = 13
 TRANSACTION_DETAILS = (
     "description, bank_category, "
     "concat(replaceOne(toString(transaction_time), ' ', 'T'), 'Z') AS transaction_time, "
@@ -53,6 +55,10 @@ class SuggestionRequest(BaseModel):
 
     item: UUID
     transactions: list[UUID] = Field(min_length=1, max_length=BATCH_LIMIT)
+
+
+def month_start(index: int) -> date:
+    return date(index // 12, index % 12 + 1, 1)
 
 
 async def dashboard_query(query: str, **parameters: str) -> list[dict]:
@@ -108,8 +114,9 @@ async def spending(
         "selected": selected,
         "month": month,
         "totals": [],
-        "pending_totals": [],
-        "pending_by_category": [],
+        "history": [],
+        "investments": [],
+        "invested": [],
         "expenses": [],
         "has_more_expenses": False,
         "reviews": [],
@@ -136,20 +143,42 @@ async def spending(
         "ORDER BY currency, bucket NULLS FIRST FORMAT JSONEachRow",
         **filters,
     )
-    pending = await dashboard_query(
-        "SELECT currency, if(grouping(category) = 1, NULL, category) AS bucket, "
-        "toString(sum(amount)) AS total, count() AS entries "
-        f"FROM analytics.pending_card_spending {where}"
-        "GROUP BY GROUPING SETS ((currency, category), (currency)) "
-        "ORDER BY currency, bucket NULLS FIRST FORMAT JSONEachRow",
+    months = first.year * 12 + first.month - 1
+    window = filters | {
+        "since": max(month_start(months - HISTORY_MONTHS + 1), date(1970, 1, 1)).isoformat(),
+        "until": month_start(months + 1).isoformat(),
+    }
+    in_window = (
+        f"WHERE {scope} AND economic_date >= {{since:Date}} AND economic_date < {{until:Date}} "
+    )
+    result["history"] = await dashboard_query(
+        "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, currency, "
+        "source, status, category, toString(sum(amount)) AS total, count() AS entries "
+        "FROM (SELECT item_key, economic_date, currency, source, category, "
+        "toDecimal128(net_amount, 12) AS amount, 'POSTED' AS status "
+        "FROM analytics.spending_dashboard WHERE included "
+        "UNION ALL SELECT item_key, economic_date, currency, 'card' AS source, category, "
+        "toDecimal128(amount, 12) AS amount, 'PENDING' AS status "
+        "FROM analytics.pending_card_spending) "
+        f"{in_window}GROUP BY month, currency, source, status, category "
+        "ORDER BY month, currency, source, status, category FORMAT JSONEachRow",
+        **window,
+    )
+    result["investments"] = await dashboard_query(
+        "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, currency, "
+        "kind, toString(sum(amount)) AS total, count() AS entries "
+        f"FROM analytics.investment_flows {in_window}"
+        "GROUP BY month, currency, kind ORDER BY month, currency, kind FORMAT JSONEachRow",
+        **window,
+    )
+    # Latest reported balances, independent of the selected month.
+    result["invested"] = await dashboard_query(
+        "SELECT currency, source, toString(sum(balance)) AS total, "
+        "toString(max(observed_on)) AS observed_on "
+        f"FROM analytics.invested_balances WHERE {scope} "
+        "GROUP BY currency, source ORDER BY currency, source FORMAT JSONEachRow",
         **filters,
     )
-    result["pending_totals"] = [
-        {key: value for key, value in row.items() if key != "bucket"}
-        for row in pending
-        if row["bucket"] is None
-    ]
-    result["pending_by_category"] = [row for row in pending if row["bucket"] is not None]
     search = search.strip()
     expense_filters = dict(filters, offset=str((page - 1) * EXPENSE_PAGE_SIZE))
     search_filter = ""
