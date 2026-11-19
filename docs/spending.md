@@ -94,7 +94,37 @@ Known transfers and card bill payments are excluded. Ambiguous debits such as
 PIX remain in Debit review until included. The review shows a recognized
 payment method when neither a bank description nor a merchant is available.
 
-**Pending card spending** shows purchases dated in the selected month that
+**Spending this month** adds account debits, posted card purchases and pending
+card purchases for each currency, and compares the total with the previous month.
+**Monthly comparison** charts the same split for the last 12 months; select a
+month to open it, or show the figures as a table. **Categories vs. previous
+month** compares each category with the month before. Card purchases count in
+the month of their transaction date, not the month of their bill.
+
+**Net invested** shows, for the same month, contributions minus withdrawals,
+with investment income (yields, coupons, net of investment taxes) apart.
+**Investments by month** charts the net amount for the last 12 months. Money
+moved into investments is never counted as spending. A posted account
+transaction counts as an investment movement when:
+
+- its description starts with `Dinheiro reservado` (contribution) or
+  `Dinheiro retirado` (withdrawal), as Mercado Pago reports savings boxes
+  ("caixinhas"), which have no separate investment positions;
+- its description starts with a fixed-income movement such as
+  `COMPRA - CDB`, `VENCIMENTO - LCA` or `CUPOM - CDB`; or
+- its provider category is an investment category (debits contribute, credits
+  withdraw), or `Proceeds interests and dividends` / `Taxes on investments`
+  (income).
+
+**Total invested** shows the latest reported balances, whatever the selected
+month: investment positions plus money reserved inside bank accounts. Mercado
+Pago reports savings boxes as reserved balances of the checking account
+(`bankData.reservedBalances`), in the account currency.
+
+Card transactions are never investment movements. Rebuild the projections from
+Bronze after applying the migrations to classify earlier imports.
+
+Pending card purchases are purchases dated in the selected month that
 the provider still marks pending. They move into posted spending when a newer
 observation settles the same transaction. A positive card debit reported with
 card metadata can count as a purchase even when its operation code is

@@ -3,6 +3,16 @@ import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
 import { visibleConnections } from "./connections";
 import { InvestmentsView } from "./investments";
+import type { HistoryRow, InvestmentRow } from "./spending-history";
+import {
+  CategoryComparison,
+  InvestmentComparison,
+  InvestedTotal,
+  InvestmentOverview,
+  type InvestedRow,
+  MonthlyComparison,
+  MonthOverview,
+} from "./spending-overview";
 import {
   TransactionDetailCell,
   type TransactionDetails,
@@ -16,7 +26,6 @@ import {
   monthChoices,
   readLanguagePreference,
   type LanguagePreference,
-  type Locale,
 } from "./locale";
 import "./style.css";
 
@@ -46,8 +55,9 @@ type Spending = {
   selected: Connection | null;
   month: string | null;
   totals: Total[];
-  pending_totals: Omit<Total, "bucket">[];
-  pending_by_category?: Total[];
+  history?: HistoryRow[];
+  investments?: InvestmentRow[];
+  invested?: InvestedRow[];
   expenses: Expense[];
   has_more_expenses?: boolean;
   reviews: Review[];
@@ -62,43 +72,6 @@ const years = Array.from(
 function currentView(): "accounts" | "investments" | "spending" {
   const view = window.location.hash.slice(1);
   return view === "accounts" || view === "investments" ? view : "spending";
-}
-
-function CategoryBreakdown({
-  rows,
-  locale,
-}: {
-  rows: Total[];
-  locale: Locale;
-}) {
-  const categories = rows.filter((row) => row.bucket !== null);
-  const currencies = new Set(categories.map((row) => row.currency));
-  return Array.from(currencies, (currency) => {
-    const entries = categories
-      .filter((row) => row.currency === currency)
-      .sort((a, b) => Number(b.total) - Number(a.total));
-    const max = Math.max(
-      1,
-      ...entries.map((row) => Math.abs(Number(row.total))),
-    );
-    return (
-      <div className="chart" key={currency}>
-        <h3>{currency}</h3>
-        {entries.map((row) => (
-          <div className="bar" key={row.bucket}>
-            <span>{row.bucket}</span>
-            <meter
-              aria-hidden="true"
-              min={0}
-              max={max}
-              value={Math.abs(Number(row.total))}
-            />
-            <span>{formatMoney(row.total, currency, locale)}</span>
-          </div>
-        ))}
-      </div>
-    );
-  });
 }
 
 function App() {
@@ -260,7 +233,9 @@ function App() {
     }
   }
 
-  const currencies = data?.totals.filter((row) => row.bucket === null) ?? [];
+  const history = data?.history ?? [];
+  const investments = data?.investments ?? [];
+  const invested = data?.invested ?? [];
   const combined = data?.selected?.id === "all";
   const hasImportedConnections = data?.connections.some(
     (connection) => !connection.is_demo,
@@ -430,57 +405,76 @@ function App() {
         {!loading &&
           !error &&
           data?.selected &&
-          !currencies.length &&
-          !data.pending_totals?.length && (
+          !history.some((row) => row.month === data.month) && (
             <p className="empty">{copy.noSpending}</p>
           )}
         {!loading &&
           !error &&
           data?.selected &&
-          !!data.pending_totals?.length && (
-            <section className="panel" aria-labelledby="pending-card-spending">
-              <h2 id="pending-card-spending">{copy.pendingCardSpending}</h2>
-              <div className="summary">
-                {data.pending_totals.map((row) => (
-                  <div key={row.currency}>
-                    <span>{row.currency}</span>
-                    <strong>
-                      {formatMoney(row.total, row.currency, locale)}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-              {(data.pending_by_category?.length ?? 0) > 0 && (
-                <CategoryBreakdown
-                  rows={data.pending_by_category ?? []}
+          (history.length > 0 ||
+            investments.length > 0 ||
+            invested.length > 0) && (
+            <>
+              <MonthOverview
+                rows={history}
+                month={data.month ?? ""}
+                locale={locale}
+              >
+                <InvestmentOverview
+                  rows={investments}
+                  month={data.month ?? ""}
                   locale={locale}
                 />
+                <InvestedTotal rows={invested} locale={locale} />
+              </MonthOverview>
+              <section className="panel" aria-labelledby="monthly-comparison">
+                <h2 id="monthly-comparison">{copy.monthlyComparison}</h2>
+                <MonthlyComparison
+                  rows={history}
+                  month={data.month ?? ""}
+                  locale={locale}
+                  disabled={saving || suggesting}
+                  onSelect={(value) => {
+                    setPage(1);
+                    setMonth(value);
+                  }}
+                />
+              </section>
+              {investments.length > 0 && (
+                <section
+                  className="panel"
+                  aria-labelledby="investment-comparison"
+                >
+                  <h2 id="investment-comparison">
+                    {copy.investmentComparison}
+                  </h2>
+                  <InvestmentComparison
+                    rows={investments}
+                    month={data.month ?? ""}
+                    locale={locale}
+                    disabled={saving || suggesting}
+                    onSelect={(value) => {
+                      setPage(1);
+                      setMonth(value);
+                    }}
+                  />
+                </section>
               )}
-            </section>
+              <section className="panel" aria-labelledby="categories">
+                <h2 id="categories">{copy.categoryComparison}</h2>
+                {uncategorized > 0 && (
+                  <p>
+                    {number.format(uncategorized)} {copy.awaitingCategory}
+                  </p>
+                )}
+                <CategoryComparison
+                  rows={history}
+                  month={data.month ?? ""}
+                  locale={locale}
+                />
+              </section>
+            </>
           )}
-        {!loading && !error && data?.selected && currencies.length > 0 && (
-          <div className="summary">
-            {currencies.map((row) => (
-              <div key={row.currency}>
-                <span>
-                  {copy.netSpending} · {row.currency}
-                </span>
-                <strong>{formatMoney(row.total, row.currency, locale)}</strong>
-                <small>
-                  {number.format(Number(row.entries))}{" "}
-                  {Number(row.entries) === 1
-                    ? copy.postedEntry
-                    : copy.postedEntries}
-                </small>
-              </div>
-            ))}
-            <div>
-              <span>{"Uncategorized"}</span>
-              <strong>{number.format(uncategorized)}</strong>
-              <small>{copy.awaitingCategory}</small>
-            </div>
-          </div>
-        )}
         {!loading && !error && data?.selected && (
           <section className="panel" aria-labelledby="reviews">
             <h2 id="reviews">{copy.reviewTitle}</h2>
@@ -591,12 +585,6 @@ function App() {
         )}
         {!loading && !error && data?.selected && (
           <>
-            {currencies.length > 0 && (
-              <section className="panel" aria-labelledby="categories">
-                <h2 id="categories">{copy.spendingByCategory}</h2>
-                <CategoryBreakdown rows={data.totals} locale={locale} />
-              </section>
-            )}
             <section className="panel" aria-labelledby="expenses">
               <h2 id="expenses">{copy.recentExpenses}</h2>
               <p>{copy.matchingExpenses}</p>

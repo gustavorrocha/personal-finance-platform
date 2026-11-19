@@ -42,6 +42,40 @@ def test_transaction_details_preserve_bank_text_and_distinguish_reported_time():
         assert transaction_details({"date": missing_time})["transaction_time"] is None
 
 
+def test_investment_flows_cover_savings_boxes_and_fixed_income_and_are_not_spending():
+    cases = [
+        ({"type": "DEBIT", "description": "Dinheiro reservado Viagem"}, "contribution"),
+        ({"type": "CREDIT", "description": "Dinheiro retirado Viagem"}, "withdrawal"),
+        (
+            {"type": "DEBIT", "description": "COMPRA - CDB BANCO X - VENC.: 01-01-2030"},
+            "contribution",
+        ),
+        ({"type": "CREDIT", "description": "VENCIMENTO - LCA BANCO X"}, "withdrawal"),
+        (
+            {
+                "type": "CREDIT",
+                "description": "Rendimentos",
+                "category": "Proceeds interests and dividends",
+            },
+            "income",
+        ),
+        ({"type": "DEBIT", "description": "IRRF - CDB BANCO X"}, "income"),
+        (
+            {"type": "DEBIT", "description": "Aplicação automática", "category": "Investments"},
+            "contribution",
+        ),
+        ({"type": "CREDIT", "description": "Resgate", "category": "Fixed income"}, "withdrawal"),
+        ({"type": "DEBIT", "description": "Compra - Mercado X", "category": "Groceries"}, ""),
+    ]
+    for record, kind in cases:
+        fields = spending_fields(record, "tx")
+        assert fields["investment_kind"] == kind, record
+        if kind:
+            assert fields["spending_kind"] == ""
+    card = {"type": "DEBIT", "description": "Dinheiro reservado X", "creditCardMetadata": {}}
+    assert spending_fields(card, "tx", card_account=True)["investment_kind"] == ""
+
+
 def test_spending_requires_purchase_evidence_and_excludes_transfers_and_settlements():
     debit = {"type": "DEBIT", "description": "Synthetic Market"}
     assert spending_fields(debit, "tx")["spending_kind"] == "review"
@@ -153,9 +187,7 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
                     "items",
                     json_bytes({"id": source, "status": "UPDATED", "connector": {"id": 123}}),
                 ),
-                CapturePage(
-                    "accounts", json_bytes({"results": [{"id": CARD, "type": account_type}]})
-                ),
+                CapturePage("accounts", json_bytes({"results": [account(account_type)]})),
                 CapturePage(
                     "transactions",
                     json_bytes({"results": rows}),
@@ -165,11 +197,34 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         )
         silver.replay(manifest.run_id)
 
+    def account(account_type):
+        record = {"id": CARD, "type": account_type, "currencyCode": "BRL"}
+        if account_type == "BANK":
+            boxes = [7.25, 0, 3]
+            record["bankData"] = {
+                "reservedBalances": [
+                    {"availableAmounts": [{"amount": amount, "currencyCode": "BRL"}]}
+                    for amount in boxes
+                ]
+                + [{"availableAmounts": [{"amount": 50, "currencyCode": "USD"}]}]
+            }
+        return record
+
     observe(
         ITEM,
         "BANK",
         [
             {"amount": 10, "operationType": "CARTAO"},
+            {"amount": 20, "operationType": "CARTAO", "date": "2024-10-05"},
+            {"amount": 100, "description": "Dinheiro reservado Viagem", "category": "Other"},
+            {"amount": 30, "type": "CREDIT", "description": "Dinheiro retirado Viagem"},
+            {
+                "amount": 2,
+                "type": "CREDIT",
+                "description": "Rendimentos",
+                "category": "Proceeds interests and dividends",
+            },
+            {"amount": 0.5, "description": "IRRF - CDB Banco X"},
             {"amount": 100, "operationType": "TRANSFERENCIA_MESMA_INSTITUICAO"},
             {
                 "amount": 7,
@@ -221,8 +276,27 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         assert page["selected"]["id"] == "all"
         assert page["month"] == "2024-11"
         assert total(page) == Decimal(35)
-        assert Decimal(page["pending_totals"][0]["total"]) == Decimal(8)
-        assert page["pending_by_category"][0]["bucket"] == "Office supplies"
+        history = {}
+        for row in page["history"]:
+            key = (row["month"], row["source"], row["status"])
+            history[key] = history.get(key, 0) + Decimal(row["total"])
+        assert history == {
+            ("2024-10", "bank", "POSTED"): Decimal(20),
+            ("2024-11", "bank", "POSTED"): Decimal(10),
+            ("2024-11", "card", "POSTED"): Decimal(25),
+            ("2024-11", "card", "PENDING"): Decimal(8),
+        }
+        assert {row["kind"]: Decimal(row["total"]) for row in page["investments"]} == {
+            "contribution": Decimal(100),
+            "withdrawal": Decimal(30),
+            "income": Decimal("1.5"),
+        }
+        assert [(row["currency"], row["source"], row["total"]) for row in page["invested"]] == [
+            ("BRL", "savings_boxes", "10.25")
+        ]
+        assert {row["category"] for row in page["history"] if row["status"] == "PENDING"} == {
+            "Office supplies"
+        }
         assert {row["item"] for row in page["expenses"]} == {
             str(item_key(s)) for s in (ITEM, NEW_ITEM)
         }
@@ -262,7 +336,9 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         )
         settled = client.get(path, params={"item": "all"}).json()
         assert total(settled) == Decimal(50)
-        assert settled["pending_totals"] == []
+        assert {row["status"] for row in settled["history"] if row["month"] == "2024-11"} == {
+            "POSTED"
+        }
 
 
 def test_dashboard_excludes_nonexpenses_and_rules_survive_replay(isolated_warehouse, monkeypatch):
