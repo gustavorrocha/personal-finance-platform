@@ -1,8 +1,7 @@
 const scale = 10n ** 12n;
 
-export function summarizeBankBalances(
-  accounts: {
-    type: string | null;
+function summarizeBalances(
+  balances: {
     currency: string | null;
     balance: string | null;
     observed_at: string;
@@ -13,8 +12,7 @@ export function summarizeBankBalances(
     { units: bigint; oldest: string; newest: string }
   >();
   let unavailable = 0;
-  for (const { type, currency, balance, observed_at } of accounts) {
-    if (type !== "BANK") continue;
+  for (const { currency, balance, observed_at } of balances) {
     const decimal = balance?.match(/^(-?)(\d+)(?:\.(\d{1,12}))?$/);
     if (!decimal || !currency) {
       unavailable++;
@@ -45,4 +43,29 @@ export function summarizeBankBalances(
       };
     }).sort((a, b) => a.currency.localeCompare(b.currency)),
   };
+}
+
+type ReportedBalance = Parameters<typeof summarizeBalances>[0][number];
+export type BalanceTotals = ReturnType<typeof summarizeBalances>;
+
+export function summarizeBankBalances(
+  accounts: (ReportedBalance & { type: string | null })[],
+) {
+  return summarizeBalances(
+    accounts.filter((account) => account.type === "BANK"),
+  );
+}
+
+export function summarizeInvestmentBalances(
+  positions: (Omit<ReportedBalance, "balance"> & {
+    net_balance: string | null;
+  })[],
+) {
+  return summarizeBalances(
+    positions.map(({ net_balance, currency, observed_at }) => ({
+      balance: net_balance,
+      currency,
+      observed_at,
+    })),
+  );
 }

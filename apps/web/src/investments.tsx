@@ -1,3 +1,5 @@
+import { summarizeInvestmentBalances } from "./balance-summary";
+import { BalanceSummary } from "./balance-summary-view";
 import {
   formatDate,
   formatReportedValue,
@@ -59,6 +61,15 @@ export function InvestmentsView({ locale }: { locale: Locale }) {
           ) : (
             <>
               <p id="investment-help">{copy.investmentHelp}</p>
+              {!truncated && (
+                <BalanceSummary
+                  summary={summarizeInvestmentBalances(positions)}
+                  title={copy.reportedInvestmentTotals}
+                  missingText={copy.incompleteInvestmentTotals}
+                  locale={locale}
+                  observed={observed}
+                />
+              )}
               <div
                 className="table-wrap"
                 role="region"

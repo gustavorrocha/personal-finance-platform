@@ -63,7 +63,8 @@ for (const key of pending) {
     "Translate this English interface string into Brazilian Portuguese.",
     "Keep any placeholders such as {merchant} exactly as written.",
     'Return only a JSON object with one string property named "translation".',
-    JSON.stringify(source[key]),
+    'Example: "Open report" becomes {"translation":"Abrir relatório"}.',
+    `Translate this text: ${JSON.stringify(source[key])}`,
   ].join("\n");
   const raw = execFileSync(
     "docker",
