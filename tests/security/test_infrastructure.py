@@ -80,6 +80,14 @@ def test_optional_gui_exposes_only_the_loopback_http_proxy():
     assert "clickhouse-gui" not in COMPOSE["services"]
 
 
+def test_recovery_override_only_changes_clickhouse_storage():
+    override = yaml.safe_load((ROOT / "infra/compose.volume.yaml").read_text())
+    assert override["services"] == {
+        "clickhouse": {"volumes": ["clickhouse-storage:/var/lib/clickhouse"]}
+    }
+    assert override["volumes"]["clickhouse-storage"]["external"] is True
+
+
 def test_clickhouse_local_admin_and_no_sensitive_query_logs():
     users = ElementTree.parse(ROOT / "infra/clickhouse/users.d/local.xml")
     networks = users.findall("./users/default/networks/ip")

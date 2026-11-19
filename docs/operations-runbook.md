@@ -19,6 +19,14 @@ For synthetic backups older than seven days, confirm the path and ACL and verify
 
 ## Phase 1 recovery
 
+On Windows, a verified ClickHouse recovery copy can live in an existing
+Docker-managed volume. Put the volume name in `.finance-clickhouse-volume` in
+the configured private directory. Use a name beginning with
+`personal-finance-clickhouse-`. Both `scripts/run_local.ps1` and
+`scripts/clickhouse_gui.ps1` use that external volume when the marker is present.
+Preserve the original Windows data directory until recovery is verified. After
+the switch it is a point-in-time copy, so keep backing up the active database.
+
 Run `scripts/validate_bronze.ps1` after startup to verify retries, quarantine, and isolated reconstruction. Run capture and warehouse publication with one writer at a time. If ClickHouse is lost, preserve the private Lake, apply the migrations to a fresh instance, and run `finance rebuild-warehouse --from-bronze`. If indexing fails after the manifest is published, retry the capture or replay its UUID once ClickHouse is available. Preserve quarantined evidence for investigation. The foundation backup covers the probe table, and the Lake needs an independent backup.
 
 ## Optional ClickHouse GUI
