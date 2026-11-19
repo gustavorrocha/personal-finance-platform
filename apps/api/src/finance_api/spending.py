@@ -3,18 +3,18 @@
 import asyncio
 import json
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, Literal, get_args
-from uuid import UUID
+from typing import Annotated, Literal
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from .local_classifier import (
     BATCH_LIMIT,
     MODEL_TIMEOUT,
-    Category,
     ClassifierUnavailable,
     LocalClassifier,
 )
@@ -31,8 +31,21 @@ TRANSACTION_DETAILS = (
     "concat(replaceOne(toString(transaction_time), ' ', 'T'), 'Z') AS transaction_time, "
     "original_purchase_date, installment_number, total_installments, "
     "toString(installment_total_amount) AS installment_total_amount, "
-    "mcc, cnpj, cnae, business_name, merchant_category "
+    "mcc, cnpj, cnae, business_name, merchant_category, "
+    "subcategory, category_id, category_rule "
 )
+ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+CATEGORY_LIST = (
+    "SELECT toString(category_id) AS id, "
+    f"if(parent_id = toUUID('{ZERO_UUID}'), NULL, toString(parent_id)) AS parent_id, name "
+    "FROM analytics.spending_categories ORDER BY name FORMAT JSONEachRow"
+)
+# Where a category correction applies: one merchant, one card MCC or one provider category.
+RULE_KEYS = {
+    "merchant": "merchant_key",
+    "mcc": "ifNull(toString(mcc), '')",
+    "provider": "provider_category_id",
+}
 
 
 class Rule(BaseModel):
@@ -40,7 +53,37 @@ class Rule(BaseModel):
 
     item: UUID
     transaction: UUID
-    category: Category
+    scope: Literal["merchant", "mcc", "provider"] = "merchant"
+    # None clears the rule so the transaction falls back to automatic classification.
+    category: UUID | None
+
+
+Month = Annotated[str, StringConstraints(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
+
+
+class ManualExpense(BaseModel):
+    """A one-off (end = start) or recurring expense the provider does not report."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item: UUID
+    description: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)
+    ]
+    amount: Annotated[Decimal, Field(gt=0, lt=Decimal("1e9"), decimal_places=2)]
+    currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] = "BRL"
+    category: UUID | None = None
+    day: Annotated[int, Field(ge=1, le=31)]
+    start: Month
+    end: Month | None = None
+    cnpj: Annotated[str, StringConstraints(pattern=r"^(\d{14})?$")] = ""
+
+
+class CategoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+    parent: UUID | None = None
 
 
 class Review(BaseModel):
@@ -56,6 +99,32 @@ class SuggestionRequest(BaseModel):
 
     item: UUID
     transactions: list[UUID] = Field(min_length=1, max_length=BATCH_LIMIT)
+
+
+def invested_history(balances: list[dict], flows: list[dict], month: str) -> list[dict]:
+    """Invested money at the end of each of the 12 months up to `month`, per currency.
+
+    Providers report only today's balances. Earlier months subtract the contributions
+    and add back the withdrawals made after them, so yield and market changes of past
+    months are not reconstructed.
+    """
+    today = date.today().strftime("%Y-%m")
+    first = date.fromisoformat(f"{month}-01")
+    index = first.year * 12 + first.month - 1
+    months = [month_start(index - offset).strftime("%Y-%m") for offset in range(11, -1, -1)]
+    rows = []
+    for currency in sorted({row["currency"] for row in balances}):
+        current = sum(Decimal(row["total"] or 0) for row in balances if row["currency"] == currency)
+        for slot in months:
+            if slot > today:
+                continue
+            later = sum(
+                Decimal(row["net"] or 0)
+                for row in flows
+                if row["currency"] == currency and slot < row["month"] <= today
+            )
+            rows.append({"month": slot, "currency": currency, "total": str(current - later)})
+    return rows
 
 
 def month_start(index: int) -> date:
@@ -81,6 +150,9 @@ async def spending(
     month: Annotated[str | None, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")] = None,
     page: Annotated[int, Query(ge=1, le=1000)] = 1,
     search: Annotated[str, Query(max_length=120)] = "",
+    # Exact category and subcategory of the listed expenses; "" means none.
+    category: Annotated[str | None, Query(max_length=60)] = None,
+    subcategory: Annotated[str | None, Query(max_length=60)] = None,
 ):
     if month is not None and not 1970 <= int(month[:4]) <= 2148:
         raise HTTPException(422, "Unsupported month")
@@ -118,10 +190,11 @@ async def spending(
         "history": [],
         "investments": [],
         "invested": [],
+        "invested_history": [],
         "expenses": [],
         "has_more_expenses": False,
         "reviews": [],
-        "categories": get_args(Category),
+        "categories": await dashboard_query(CATEGORY_LIST),
     }
     if selected is None:
         return result
@@ -154,15 +227,17 @@ async def spending(
     )
     result["history"] = await dashboard_query(
         "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, currency, "
-        "source, status, category, toString(sum(amount)) AS total, count() AS entries "
-        "FROM (SELECT item_key, economic_date, currency, source, category, "
+        "source, status, category, subcategory, toString(sum(amount)) AS total, "
+        "count() AS entries "
+        "FROM (SELECT item_key, economic_date, currency, source, category, subcategory, "
         "toDecimal128(net_amount, 12) AS amount, 'POSTED' AS status "
         "FROM analytics.spending_dashboard WHERE included "
         "UNION ALL SELECT item_key, economic_date, currency, 'card' AS source, category, "
+        "subcategory, "
         "toDecimal128(amount, 12) AS amount, 'PENDING' AS status "
         "FROM analytics.pending_card_spending) "
-        f"{in_window}GROUP BY month, currency, source, status, category "
-        "ORDER BY month, currency, source, status, category FORMAT JSONEachRow",
+        f"{in_window}GROUP BY month, currency, source, status, category, subcategory "
+        "ORDER BY month, currency, source, status, category, subcategory FORMAT JSONEachRow",
         **window,
     )
     result["investments"] = await dashboard_query(
@@ -180,25 +255,44 @@ async def spending(
         "GROUP BY currency, source ORDER BY currency, source FORMAT JSONEachRow",
         **filters,
     )
+    result["invested_history"] = invested_history(
+        result["invested"],
+        await dashboard_query(
+            "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, currency, "
+            "toString(sumIf(amount, kind = 'contribution') - sumIf(amount, kind = 'withdrawal')) "
+            f"AS net FROM analytics.investment_flows WHERE {scope} "
+            "GROUP BY month, currency FORMAT JSONEachRow",
+            **filters,
+        ),
+        month,
+    )
     search = search.strip()
     expense_filters = dict(filters, offset=str((page - 1) * EXPENSE_PAGE_SIZE))
-    search_filter = ""
+    conditions = []
     if search:
         expense_filters["search"] = search
-        search_filter = (
-            "WHERE positionCaseInsensitiveUTF8(description, {search:String}) > 0 "
+        conditions.append(
+            "(positionCaseInsensitiveUTF8(description, {search:String}) > 0 "
             "OR positionCaseInsensitiveUTF8(merchant, {search:String}) > 0 "
             "OR positionCaseInsensitiveUTF8(category, {search:String}) > 0 "
-            "OR positionCaseInsensitiveUTF8(bank_category, {search:String}) > 0 "
+            "OR positionCaseInsensitiveUTF8(subcategory, {search:String}) > 0 "
+            "OR positionCaseInsensitiveUTF8(bank_category, {search:String}) > 0)"
         )
+    for name, value in (("category", category), ("subcategory", subcategory)):
+        if value is not None:
+            expense_filters[name] = value
+            conditions.append(f"{name} = {{{name}:String}}")
+    search_filter = f"WHERE {' AND '.join(conditions)} " if conditions else ""
     details = (
         "item_key AS item, transaction_key AS id, economic_date AS date, currency, "
         "merchant_label AS merchant, category, " + TRANSACTION_DETAILS
     )
     expenses = await dashboard_query(
         f"SELECT * FROM (SELECT {details}, toString(net_amount) AS amount, "
+        "provider_category_id, operation, "
         f"'POSTED' AS status FROM analytics.spending_dashboard {where}AND included "
-        f"UNION ALL SELECT {details}, toString(amount) AS amount, "
+        f"UNION ALL SELECT {details}, toString(amount) AS amount, '' AS provider_category_id, "
+        "'' AS operation, "
         f"'PENDING' AS status FROM analytics.pending_card_spending {where}) "
         f"{search_filter}ORDER BY date DESC, transaction_time DESC, item, id "
         f"LIMIT {EXPENSE_PAGE_SIZE + 1} OFFSET {{offset:UInt32}} FORMAT JSONEachRow",
@@ -210,7 +304,8 @@ async def spending(
         "SELECT item_key AS item, transaction_key AS id, economic_date AS date, currency, "
         "toString(net_amount) AS amount, merchant_label AS merchant, operation, decision, "
         f"{TRANSACTION_DETAILS}"
-        f"FROM analytics.spending_dashboard {where}AND reviewable "
+        # The review is a backlog: pending debits from every month, then recent decisions.
+        f"FROM analytics.spending_dashboard WHERE {scope} AND reviewable "
         "ORDER BY (decision != ''), date DESC, transaction_key DESC LIMIT 100 FORMAT JSONEachRow",
         **filters,
     )
@@ -224,22 +319,192 @@ def same_origin(request: Request) -> None:
         raise HTTPException(415, "Expected JSON")
 
 
+async def active_category(category: UUID) -> dict:
+    rows = await dashboard_query(
+        "SELECT toString(parent_id) AS parent_id, name FROM analytics.spending_categories "
+        "WHERE category_id = {category:UUID} FORMAT JSONEachRow",
+        category=str(category),
+    )
+    if not rows:
+        raise HTTPException(404, "Category is unavailable")
+    return rows[0]
+
+
 @router.post("/rules", status_code=204, dependencies=[Depends(same_origin)])
 async def save_rule(rule: Rule) -> Response:
     where = "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} AND included "
     scope = {"item": str(rule.item), "transaction": str(rule.transaction)}
-    if not await dashboard_query(
-        f"SELECT transaction_key FROM analytics.spending_dashboard {where}FORMAT JSONEachRow",
-        **scope,
-    ):
-        raise HTTPException(404, "Expense is unavailable")
-    await dashboard_query(
-        "INSERT INTO core.spending_rules (item_key, merchant_key, category) "
-        "SELECT item_key, merchant_key, {category:String} "
-        f"FROM analytics.spending_dashboard {where}",
-        category=rule.category,
+    rows = await dashboard_query(
+        f"SELECT {RULE_KEYS[rule.scope]} AS rule_key "
+        f"FROM analytics.spending_dashboard {where}FORMAT JSONEachRow",
         **scope,
     )
+    if not rows:
+        raise HTTPException(404, "Expense is unavailable")
+    if not rows[0]["rule_key"]:
+        raise HTTPException(409, "The expense has no value for this rule")
+    if rule.category is not None:
+        await active_category(rule.category)
+    await dashboard_query(
+        "INSERT INTO core.category_rules (scope, rule_key, category_id) "
+        "SELECT {scope:String}, {key:String}, {category:UUID}",
+        scope=rule.scope,
+        key=rows[0]["rule_key"],
+        category=str(rule.category or ZERO_UUID),
+    )
+    await reload_rules()
+    return Response(status_code=204)
+
+
+MANUAL_LIST = (
+    "SELECT toString(entry_id) AS id, toString(item_key) AS item, description, "
+    "toString(amount) AS amount, currency, "
+    f"if(category_id = toUUID('{ZERO_UUID}'), NULL, toString(category_id)) AS category, "
+    "day_of_month AS day, formatDateTime(start_month, '%Y-%m') AS start, "
+    "if(end_month IS NULL, NULL, formatDateTime(end_month, '%Y-%m')) AS end, cnpj "
+    "FROM analytics.manual_expenses ORDER BY description, start FORMAT JSONEachRow"
+)
+
+
+@router.get("/manual")
+async def list_manual_expenses():
+    return {"entries": await dashboard_query(MANUAL_LIST)}
+
+
+async def write_manual(entry: UUID, expense: ManualExpense, archived: bool = False) -> None:
+    if expense.end is not None and expense.end < expense.start:
+        raise HTTPException(422, "Invalid request")
+    # Archiving keeps the stored values even if their category was archived meanwhile.
+    if not archived:
+        connections = await dashboard_query(
+            "SELECT item_key FROM analytics.provider_spending WHERE item_key = {item:UUID} "
+            "AND item_key != {demo:UUID} LIMIT 1 FORMAT JSONEachRow",
+            item=str(expense.item),
+            demo=DEMO_ITEM,
+        )
+        if not connections:
+            raise HTTPException(404, "Connection has no reported expenses")
+        if expense.category is not None:
+            await active_category(expense.category)
+    await dashboard_query(
+        "INSERT INTO core.manual_expenses (entry_id, item_key, description, amount, currency, "
+        "category_id, day_of_month, start_month, end_month, cnpj, archived) "
+        "SELECT {entry:UUID}, {item:UUID}, {description:String}, {amount:Decimal(38, 12)}, "
+        "{currency:String}, {category:UUID}, {day:UInt8}, {start:Date}, "
+        "if({end:String} = '', NULL, toDate({end:String})), {cnpj:String}, {archived:Bool}",
+        entry=str(entry),
+        item=str(expense.item),
+        description=expense.description,
+        amount=str(expense.amount),
+        currency=expense.currency,
+        category=str(expense.category or ZERO_UUID),
+        day=str(expense.day),
+        start=f"{expense.start}-01",
+        end=f"{expense.end}-01" if expense.end else "",
+        cnpj=expense.cnpj,
+        archived=str(archived).lower(),
+    )
+
+
+@router.post("/manual", status_code=201, dependencies=[Depends(same_origin)])
+async def create_manual_expense(expense: ManualExpense):
+    entry = uuid4()
+    await write_manual(entry, expense)
+    return {"id": str(entry)}
+
+
+async def current_manual(entry: UUID) -> dict:
+    rows = [row for row in await dashboard_query(MANUAL_LIST) if row["id"] == str(entry)]
+    if not rows:
+        raise HTTPException(404, "Entry is unavailable")
+    return rows[0]
+
+
+@router.put("/manual/{entry}", status_code=204, dependencies=[Depends(same_origin)])
+async def update_manual_expense(entry: UUID, expense: ManualExpense) -> Response:
+    await current_manual(entry)
+    await write_manual(entry, expense)
+    return Response(status_code=204)
+
+
+@router.delete("/manual/{entry}", status_code=204, dependencies=[Depends(same_origin)])
+async def archive_manual_expense(entry: UUID) -> Response:
+    row = await current_manual(entry)
+    expense = ManualExpense(
+        item=row["item"],
+        description=row["description"],
+        amount=Decimal(row["amount"]).quantize(Decimal("0.01")),
+        currency=row["currency"],
+        category=row["category"],
+        day=row["day"],
+        start=row["start"],
+        end=row["end"],
+        cnpj=row["cnpj"],
+    )
+    await write_manual(entry, expense, archived=True)
+    return Response(status_code=204)
+
+
+@router.get("/categories")
+async def list_categories():
+    return {"categories": await dashboard_query(CATEGORY_LIST)}
+
+
+async def category_parent(category: CategoryInput, moving: UUID | None = None) -> str:
+    """Subcategories sit directly under an active top-level category: two levels at most."""
+    if category.parent is None:
+        return ZERO_UUID
+    if category.parent == moving:
+        raise HTTPException(409, "A category cannot contain itself")
+    if (await active_category(category.parent))["parent_id"] != ZERO_UUID:
+        raise HTTPException(409, "A subcategory must belong to a top-level category")
+    return str(category.parent)
+
+
+async def write_category(category: UUID, parent: str, name: str, archived: bool) -> None:
+    await dashboard_query(
+        "INSERT INTO core.spending_categories (category_id, parent_id, name, archived) "
+        "SELECT {category:UUID}, {parent:UUID}, {name:String}, {archived:Bool}",
+        category=str(category),
+        parent=parent,
+        name=name,
+        archived=str(archived).lower(),
+    )
+    await reload_rules()
+
+
+async def reload_rules() -> None:
+    """Spending views read rules from an in-memory dictionary; refresh it after a change."""
+    await dashboard_query("SYSTEM RELOAD DICTIONARY core.category_rule_dict")
+
+
+@router.post("/categories", status_code=201, dependencies=[Depends(same_origin)])
+async def create_category(category: CategoryInput):
+    identifier = uuid4()
+    await write_category(identifier, await category_parent(category), category.name, False)
+    return {"id": str(identifier)}
+
+
+@router.put("/categories/{category_id}", status_code=204, dependencies=[Depends(same_origin)])
+async def update_category(category_id: UUID, category: CategoryInput) -> Response:
+    current = await active_category(category_id)
+    parent = await category_parent(category, moving=category_id)
+    if current["parent_id"] == ZERO_UUID and parent != ZERO_UUID:
+        children = await dashboard_query(
+            "SELECT category_id FROM analytics.spending_categories "
+            "WHERE parent_id = {category:UUID} LIMIT 1 FORMAT JSONEachRow",
+            category=str(category_id),
+        )
+        if children:
+            raise HTTPException(409, "Move or archive its subcategories first")
+    await write_category(category_id, parent, category.name, False)
+    return Response(status_code=204)
+
+
+@router.delete("/categories/{category_id}", status_code=204, dependencies=[Depends(same_origin)])
+async def archive_category(category_id: UUID) -> Response:
+    current = await active_category(category_id)
+    await write_category(category_id, current["parent_id"], current["name"], True)
     return Response(status_code=204)
 
 
@@ -269,20 +534,29 @@ async def suggest_categories(request: SuggestionRequest):
         "SELECT transaction_key AS id, merchant_label AS merchant "
         "FROM analytics.spending_dashboard "
         "WHERE item_key = {item:UUID} AND transaction_key IN {ids:Array(UUID)} "
-        "AND included AND category = 'Uncategorized' AND notEmpty(merchant_label) "
+        "AND included AND category = '' AND notEmpty(merchant_label) "
         "ORDER BY transaction_key FORMAT JSONEachRow",
         item=str(request.item),
         ids="[" + ",".join(f"'{value}'" for value in ids) + "]",
     )
+    tree = await dashboard_query(CATEGORY_LIST)
+    names = {row["id"]: row["name"] for row in tree}
+    labels = {
+        f"{names[row['parent_id']]} / {row['name']}" if row["parent_id"] else row["name"]: row["id"]
+        for row in tree
+        if not row["parent_id"] or row["parent_id"] in names
+    }
     async with httpx.AsyncClient(timeout=MODEL_TIMEOUT, trust_env=False) as client:
         try:
             async with asyncio.timeout(54):
-                categories = await classifier.suggest(client, [row["merchant"] for row in rows])
+                categories = await classifier.suggest(
+                    client, [row["merchant"] for row in rows], sorted(labels)
+                )
         except (ClassifierUnavailable, TimeoutError):
             raise HTTPException(503, "Local category suggestions are unavailable") from None
     return {
         "suggestions": [
-            {"id": row["id"], "category": category}
+            {"id": row["id"], "category": labels[category], "label": category}
             for row, category in zip(rows, categories, strict=True)
             if category is not None
         ]

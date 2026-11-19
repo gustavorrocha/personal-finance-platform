@@ -1,9 +1,8 @@
 # Private spending dashboard
 
 Run the [synthetic demo](../README.md#try-the-spending-dashboard) to browse net
-spending by month, connection and currency. Category changes save a rule for the
-matching merchant in that connection. Selecting **Uncategorized** explicitly puts
-matching purchases back in the review list. Replay preserves these rule events.
+spending by month, connection and currency. Categories have two levels and are
+edited under **Categories**; see [Categories](#categories).
 
 The dashboard follows the browser's preferred language by default and falls
 back to English. Use **Language** in the header to choose **English** or
@@ -15,10 +14,16 @@ use the same saved rules and transaction currency.
 ## What counts as spending
 
 - Count posted debit transactions with card-account, card metadata, or recognized
-  spending-category evidence. Subtract posted credits with explicit refund evidence.
-- Exclude recognized transfers, card payments, cashback and pending transactions.
-  Posted debits with ambiguous evidence appear in **Debit review**. A payment-method
-  label such as PIX alone leaves the debit for review. Ambiguous credits stay in
+  spending-category evidence. The bank's consumption category (services, digital
+  services, housing, utilities, food, transport, health, travel, shopping,
+  leisure and fees) counts even for PIX and boleto payments, such as bills paid
+  from a Mercado Pago savings box. Subtract posted credits with explicit refund
+  evidence.
+- Exclude card bill payments, transfers between own accounts, savings-box and
+  other investment movements, cashback and pending transactions. A debit whose
+  only evidence is a generic transfer category, such as a PIX to a person or a
+  boleto filed as a transfer, appears in **Debit review**. A payment-method label
+  such as PIX alone also leaves the debit for review. Ambiguous credits stay in
   the imported history. [Pluggy transaction fields](https://docs.pluggy.ai/en/reference/transaction/transactions-retrieve)
 - Resolve the latest transaction before grouping. Keep one connection selected.
   A reconnect can retain overlapping history under a separate connection.
@@ -34,15 +39,40 @@ the structured merchant name as a fallback. Raw payloads remain in private Bronz
 
 ## Review a debit
 
-Find **Debit review** directly below the monthly totals. Choose **Include as
-expense** to add one debit to the monthly total. Set its
-category afterwards in **Recent expenses**. **Exclude** leaves it out of totals
-and records the decision. **Reset** returns to the automatic result. The review
-table shows up to 100 debits, with unreviewed ones first.
+**Debit review** sits at the top of the spending page and lists pending debits
+from every month: it is a backlog, not a monthly view. Choose **Include as
+expense** to count a debit in its month, or **Exclude** to leave it out. A
+decided debit leaves the list and moves to **Reviewed debits**, collapsed below,
+where **Reset** returns it to the automatic result. Set the category of an
+included debit in **Recent expenses**. The review shows up to 100 debits.
 
 Review decisions apply to a single transaction within a connection. They survive
 Bronze replay and cannot reinstate a deleted or pending transaction or a recognized
 transfer. The synthetic Harbor Books debit adds BRL 23.50 when included.
+
+## Spending the bank does not report
+
+Mercado Pago does not report payments made straight from a savings-box balance,
+such as a boleto paid with the money in a box; only the box balance drops.
+
+- **Savings-box outflows.** Each sync keeps every box balance. When a balance
+  falls by more than the reported withdrawals since the previous observation
+  (`balance before + contributions - withdrawals - balance after`, at least
+  1.00), the difference appears in **Debit review** as "Left a savings box
+  without a reported transaction", dated on the later observation. Detection
+  starts with the first stored balance (2026-11-19); earlier months cannot be
+  reconstructed. A category set with **This merchant** applies to every outflow
+  of that box.
+- **Manual and recurring entries.** Under **Manual and recurring entries**, add
+  an expense with its connection, amount, day, category and start month. A
+  recurring entry repeats every month until its end month or until today. With
+  the payee's CNPJ, a month that already has a reported payment to that CNPJ
+  skips the entry, so a bill paid sometimes from the account and sometimes from
+  a box counts once. Do not also include a box outflow for a bill that a manual
+  entry already covers.
+
+Manual entries are append-only events in `core.manual_expenses`. Outflows are
+computed by `analytics.savings_box_outflows`.
 
 ## Existing imported data
 
@@ -58,7 +88,8 @@ uv run --frozen finance rebuild-warehouse --from-bronze
 The ClickHouse dashboard user can select the spending projection and insert rule
 and review events. Its file-backed password is available to the API only. Category
 and review updates require a local browser origin. Before using personal data,
-verify an independent backup of Bronze, `core.spending_rules`, and
+verify an independent backup of Bronze, `core.spending_categories`,
+`core.category_rules`, and
 `core.spending_reviews`. The existing foundation backup covers
 the synthetic probe table.
 
@@ -84,9 +115,9 @@ backup recovery remain pending.
 Spending opens on **All imported connections** when imported data is available.
 Choose a connection to narrow the same monthly view. Synthetic demo data stays
 out of the combined totals and is hidden from selectors when imported
-connections are available. Totals are grouped by currency. Category edits,
-local suggestions, and debit review decisions use the transaction's own
-connection.
+connections are available. Totals are grouped by currency. Local suggestions
+and debit review decisions use the transaction's own connection; category rules
+apply across connections.
 
 Totals include posted credit-card purchases and bank debits with purchase
 evidence, such as a debit-card operation or a recognized spending category.
@@ -98,7 +129,16 @@ payment method when neither a bank description nor a merchant is available.
 card purchases for each currency, and compares the total with the previous month.
 **Monthly comparison** charts the same split for the last 12 months; select a
 month to open it, or show the figures as a table. **Categories vs. previous
-month** compares each category with the month before. Card purchases count in
+month** groups subcategories under their category and compares each with the
+month before. Select a category or subcategory to list that month's expenses
+in it. **Recent expenses** shows the latest 10; **Show more** opens the full,
+searchable list.
+
+**Invested wealth over time** estimates invested money at the end of each of
+the last 12 months: today's reported balances of positions and savings boxes,
+minus the contributions and plus the withdrawals made after each month.
+Providers report only current balances, so past yield and market changes are
+not included; earlier months show money put in rather than its value then. Card purchases count in
 the month of their transaction date, not the month of their bill.
 
 **Net invested** shows, for the same month, contributions minus withdrawals,
@@ -173,3 +213,34 @@ existing local data and does not contact Pluggy.
 .\scripts\run_local.ps1
 uv run --frozen finance rebuild-warehouse --from-bronze
 ```
+
+## Categories
+
+Categories have two levels, such as **Alimentação** › **Delivery**. Every name
+is editable under **Categories**: rename, add, move a subcategory to another
+category or make it a category, and archive. Archiving hides the category and
+its subcategories; their expenses return to automatic classification. An
+expense can belong to a category directly or to one of its subcategories.
+
+Each expense takes the first match of:
+
+1. a rule for its merchant;
+2. a rule for its specific provider category, such as `Food delivery`;
+3. a rule for its card MCC, such as 5812 for restaurants;
+4. a rule for its provider category group, such as `Groceries`.
+
+A specific provider category wins over the MCC because an MCC describes the
+merchant, not the purchase: food delivery is billed under the restaurant's MCC.
+A broad provider category loses to the MCC, which corrects restaurants filed as
+groceries. In **Recent expenses**, choose a category and where it applies: **This
+merchant**, **Every card purchase with MCC**, or **Every expense in the bank
+category**. **Automatic (rules)** removes the rule at that level. The expense
+shows which rule classified it.
+
+The initial categories and the provider category and MCC rules were seeded on
+2026-11-19 (`infra/migrations/0018_spending_categories.sql`). Earlier per-connection
+merchant rules in `core.spending_rules` are kept but no longer applied.
+Categories and rules are append-only events in `core.spending_categories` and
+`core.category_rules`. The spending views read the current rules from the
+in-memory dictionary `core.category_rule_dict`, which the API reloads after
+every change.

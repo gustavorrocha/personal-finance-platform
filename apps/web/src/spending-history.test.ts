@@ -57,8 +57,30 @@ test("monthly totals combine bank and card, keep pending visible, and fill gaps"
 
 test("categories compare the month with the previous one", () => {
   assert.deepEqual(categoryComparison(rows, "BRL", "2024-01"), [
-    { category: "Groceries", current: 25, previous: 0 },
-    { category: "Travel", current: 8, previous: 40 },
+    { category: "Groceries", current: 25, previous: 0, subcategories: [] },
+    { category: "Travel", current: 8, previous: 40, subcategories: [] },
+  ]);
+  const nested = [
+    {
+      ...row("2024-01", "card", "POSTED", "Food", "10"),
+      subcategory: "Delivery",
+    },
+    { ...row("2024-01", "card", "POSTED", "Food", "4"), subcategory: "" },
+    {
+      ...row("2023-12", "card", "POSTED", "Food", "6"),
+      subcategory: "Delivery",
+    },
+  ];
+  assert.deepEqual(categoryComparison(nested, "BRL", "2024-01"), [
+    {
+      category: "Food",
+      current: 14,
+      previous: 6,
+      subcategories: [
+        { category: "Delivery", current: 10, previous: 6 },
+        { category: "", current: 4, previous: 0 },
+      ],
+    },
   ]);
   assert.equal(change(8, 40), -0.8);
   assert.equal(change(25, 0), null);

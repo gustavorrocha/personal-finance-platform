@@ -41,6 +41,11 @@ NON_SPENDING = {
     "CASHBACK",
 }
 REFUNDS = {"ESTORNO", "REFUND"}
+# Pluggy category groups (first two digits of categoryId) that describe consumption:
+# fees, services, shopping, digital services, groceries, food, travel, leisure,
+# housing, health and transport.
+SPENDING_GROUPS = {"02", "07", "08", "09", "10", "11", "12", "14", "17", "18", "19"}
+CARD_BILL_PAYMENT = re.compile(r"^pagamento (de )?(fatura|cart[aã]o)")
 # Pluggy category names; a debit moves money in, a credit takes it out.
 INVESTMENT_CATEGORIES = {
     "investments",
@@ -177,25 +182,38 @@ def spending_fields(
         and amount > 0
     )
     investment = "" if card_account else investment_kind(record)
+    description = normalize(record.get("descriptionRaw") or record.get("description"))
+    bill_payment = bool(CARD_BILL_PAYMENT.match(description)) or any(
+        word in provider_category for word in ("bill payment", "credit card payment")
+    )
+    # A generic transfer category does not prove a transfer between own accounts: boletos
+    # and PIX to third parties carry it too. Only debits to oneself are dropped outright.
+    transfer_category = "transfer" in provider_category
     excluded = (
         bool(investment)
         or own_transfer
+        or bill_payment
         or (operation in NON_SPENDING and not mislabeled_card_purchase)
-        or any(
-            word in provider_category
-            for word in ("transfer", "bill payment", "credit card payment")
+        or (
+            transfer_category
+            and (direction != "DEBIT" or provider_category == "same person transfer")
         )
     )
+    # The bank's own consumption category is evidence even for a PIX or boleto payment.
+    spending_category = business["category_id"][:2] in SPENDING_GROUPS and not transfer_category
     kind = ""
     if not excluded:
         if direction == "CREDIT" and operation in REFUNDS:
             kind = "refund"
         elif direction == "DEBIT" and operation not in REFUNDS:
-            has_evidence = operation not in PAYMENT_RAILS and (
-                hint
-                or operation in BANK_EXPENSE_OPERATIONS
-                or card_account
-                or isinstance(record.get("creditCardMetadata"), dict)
+            has_evidence = spending_category or (
+                operation not in PAYMENT_RAILS
+                and (
+                    hint
+                    or operation in BANK_EXPENSE_OPERATIONS
+                    or card_account
+                    or isinstance(record.get("creditCardMetadata"), dict)
+                )
             )
             kind = "purchase" if has_evidence else "review"
     return business | {

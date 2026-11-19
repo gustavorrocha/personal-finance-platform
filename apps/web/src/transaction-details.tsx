@@ -52,6 +52,10 @@ export function TransactionDetailCell({
   return (
     <td className="transaction-details">
       <div>{description || entry.operation || copy.unavailable}</div>
+      {entry.operation === "SAVINGS_BOX" && (
+        <small>{copy.savingsBoxOutflow}</small>
+      )}
+      {entry.operation === "MANUAL" && <small>{copy.manualEntry}</small>}
       {entry.merchant && description !== entry.merchant && (
         <small>{entry.merchant}</small>
       )}
