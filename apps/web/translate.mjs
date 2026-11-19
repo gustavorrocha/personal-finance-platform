@@ -38,15 +38,24 @@ for (const [key, value] of Object.entries(source)) {
   }
 }
 
-if (
-  check &&
-  (pending.length ||
-    Object.keys(previous.messages).length !== Object.keys(source).length ||
-    Object.keys(previous.source).length !== Object.keys(source).length)
-) {
-  throw new Error(
-    "Portuguese catalog is stale. Regenerate it with the local translator.",
-  );
+if (check) {
+  const obsolete = [
+    ...new Set([
+      ...Object.keys(previous.messages),
+      ...Object.keys(previous.source),
+    ]),
+  ].filter((key) => !Object.hasOwn(source, key));
+  if (pending.length || obsolete.length) {
+    if (pending.length)
+      console.error(
+        `Missing, changed, or invalid translations: ${pending.join(", ")}`,
+      );
+    if (obsolete.length)
+      console.error(`Obsolete translation keys: ${obsolete.join(", ")}`);
+    throw new Error(
+      "Regenerate the Portuguese catalog with the local translator.",
+    );
+  }
 }
 
 for (const key of pending) {
