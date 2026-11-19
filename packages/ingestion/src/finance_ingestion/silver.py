@@ -11,7 +11,7 @@ from finance_lake.manifest import Manifest, json_bytes
 from finance_pluggy.coverage import identifier
 
 from .collection import entity_key, item_key
-from .spending import spending_fields
+from .spending import digits, spending_fields
 from .warehouse import BronzeWarehouse, Execute
 
 
@@ -184,7 +184,12 @@ def reserved_balance(record: dict, currency: str | None) -> str | None:
 
 
 def normalized_row(
-    manifest: Manifest, item: UUID, entry: ReplayRecord, ordinal: int, cards: set[UUID]
+    manifest: Manifest,
+    item: UUID,
+    entry: ReplayRecord,
+    ordinal: int,
+    cards: set[UUID],
+    owners: frozenset[str] = frozenset(),
 ) -> dict:
     record = entry.record
     resource = entry.resource
@@ -257,7 +262,9 @@ def normalized_row(
     ):
         raise ValueError("Incomplete transaction")
     if resource == "transactions":
-        row.update(spending_fields(record, str(key), card_account=entry.scope_id in cards))
+        row.update(
+            spending_fields(record, str(key), card_account=entry.scope_id in cards, owners=owners)
+        )
         row.update(transaction_details(record))
     if resource == "accounts":
         row["reserved_balance"] = reserved_balance(record, currency)
@@ -352,8 +359,15 @@ class SilverWarehouse:
             for entry in entries
             if entry.resource == "accounts" and entry.record.get("type") == "CREDIT"
         }
+        # Account holders' documents, used only to recognize transfers between own accounts.
+        owners = frozenset(
+            document
+            for entry in entries
+            if entry.resource == "accounts"
+            and len(document := digits(entry.record.get("taxNumber"))) == 11
+        )
         rows = [
-            normalized_row(manifest, item, entry, ordinal, cards)
+            normalized_row(manifest, item, entry, ordinal, cards, owners)
             for ordinal, entry in enumerate(entries)
         ]
         boxes = [

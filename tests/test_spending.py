@@ -508,3 +508,36 @@ def test_investment_details_and_movement_costs_reach_silver():
     assert movement["movement_type"] == "DEBIT"
     assert Decimal(movement["fees"]) == 2 and Decimal(movement["income_tax"]) == 3
     assert row("investment_movements", {})["fees"] is None
+
+
+def test_merchant_identity_keeps_companies_and_recognizes_own_transfers():
+    def pix(kind, value, name):
+        return {
+            "type": "DEBIT",
+            "amount": 10,
+            "categoryId": "05070000",
+            "paymentData": {
+                "paymentMethod": "PIX",
+                "receiver": {"name": name, "documentNumber": {"type": kind, "value": value}},
+            },
+        }
+
+    company = spending_fields(pix("CNPJ", "12.345.678/0001-90", "Padaria X LTDA"), "tx")
+    assert company["counterparty_cnpj"] == "12345678000190"
+    assert company["merchant_label"] == "Padaria X LTDA"
+    assert company["category_id"] == "05070000" and not company["own_transfer"]
+    person = pix("CPF", "123.456.789-00", "Private Person")
+    fields = spending_fields(person, "tx")
+    assert fields["counterparty_type"] == "CPF"
+    assert "Private Person" not in str(fields) and "12345678900" not in str(fields)
+    own = spending_fields(person, "tx", owners=frozenset({"12345678900"}))
+    assert own["own_transfer"] and own["spending_kind"] == ""
+    card = {
+        "type": "DEBIT",
+        "amount": 5,
+        "creditCardMetadata": {"payeeMCC": 5812},
+        "merchant": {"cnpj": "12345678000190", "cnae": "5611203", "category": "Eating out"},
+    }
+    fields = spending_fields(card, "tx", card_account=True)
+    assert (fields["mcc"], fields["merchant_cnae"]) == (5812, "5611203")
+    assert fields["merchant_cnpj"] == "12345678000190"
