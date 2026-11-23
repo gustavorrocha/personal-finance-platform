@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { InvestmentClasses } from "./investment-classes";
 import { messages, type Locale } from "./locale";
 
 export type CategoryNode = {
@@ -182,6 +183,7 @@ export function CategoriesView({ locale }: { locale: Locale }) {
         ))}
         {nodes && addForm(null, copy.newCategory)}
       </section>
+      <InvestmentClasses locale={locale} />
     </main>
   );
 }

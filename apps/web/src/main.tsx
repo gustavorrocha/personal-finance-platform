@@ -828,9 +828,6 @@ function App() {
                     rows={data.invested_history ?? []}
                     gaps={data.invested_gaps ?? []}
                     locale={locale}
-                    positionsLabel={(id) =>
-                      `${copy.investmentPositions} · ${connectionLabels.get(id) ?? copy.connection}`
-                    }
                   />
                 </section>
               )}

@@ -582,41 +582,33 @@ export function InvestedTotal({
   });
 }
 
+/** Invested money of one investment class ("" key: unclassified) at a month's end. */
 export type InvestedPoint = {
   month: string;
   currency: string;
-  kind: "positions" | "savings_box";
-  item: string;
+  key: string;
   name: string;
   total: string;
 };
-export type InvestedGap = {
-  kind: "positions" | "savings_box";
-  item: string;
-  name: string;
-  currency: string;
-  amount: string;
-};
+export type InvestedGap = { name: string; currency: string; amount: string };
 
 // Categorical slots in fixed order; a seventh component folds into "Other".
 const SERIES = 6;
 
-/** Invested money at the end of each month, stacked by connection positions and
- * savings boxes. Estimated from today's balances and the flows reported since. */
+/** Invested money at the end of each month, stacked by investment class. Stored daily
+ * balances where they exist; earlier months walk back through reported movements. */
 export function InvestedEvolution({
   rows,
   gaps,
   locale,
-  positionsLabel,
 }: {
   rows: InvestedPoint[];
   gaps: InvestedGap[];
   locale: Locale;
-  positionsLabel: (item: string) => string;
 }) {
   const copy = messages[locale];
-  const label = (row: { kind: string; item: string; name: string }) =>
-    row.kind === "positions" ? positionsLabel(row.item) : row.name;
+  const label = (row: { key: string; name: string }) =>
+    row.key ? row.name : copy.unclassifiedInvestment;
   return (
     <>
       <p>{copy.investedEvolutionHelp}</p>
@@ -627,8 +619,8 @@ export function InvestedEvolution({
           </p>
           <ul>
             {gaps.map((gap) => (
-              <li key={`${gap.item}-${gap.name}-${gap.currency}`}>
-                {label(gap)}: {formatMoney(gap.amount, gap.currency, locale)}
+              <li key={`${gap.name}-${gap.currency}`}>
+                {gap.name}: {formatMoney(gap.amount, gap.currency, locale)}
               </li>
             ))}
           </ul>
@@ -637,12 +629,14 @@ export function InvestedEvolution({
       {[...new Set(rows.map((row) => row.currency))].sort().map((currency) => {
         const own = rows.filter((row) => row.currency === currency);
         const months = [...new Set(own.map((row) => row.month))].sort();
-        const keyOf = (row: InvestedPoint) =>
-          `${row.kind}|${row.item}|${row.name}`;
-        // Fixed order (positions, then boxes by name) so a color always means the same
-        // component, whatever the amounts.
-        const ranked = [...new Set(own.map(keyOf))].sort((a, b) =>
-          a.localeCompare(b),
+        const keyOf = (row: InvestedPoint) => row.key;
+        // Fixed order (classes by name, unclassified last) so a color always means the
+        // same class, whatever the amounts.
+        const order = new Map(own.map((row) => [row.key, label(row)]));
+        const ranked = [...order.keys()].sort(
+          (a, b) =>
+            Number(!a) - Number(!b) ||
+            (order.get(a) ?? "").localeCompare(order.get(b) ?? ""),
         );
         const slot = new Map(
           ranked.map((key, index) => [key, Math.min(index, SERIES - 1)]),

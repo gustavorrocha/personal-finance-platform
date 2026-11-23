@@ -192,7 +192,7 @@
     "clearFilter": "2150d8df37e489573fb8f0f19ef89d2eda2ba4b49b3beb36333e5096a99a6dc0",
     "showExpensesOf": "e09e9441db52ceb2be54bf5d1d0962766e16be4ac9bda383e0502aacaf127b37",
     "investedEvolution": "906d509adc4392ba130639ba14f4ef5e61ce369b64f07ac84a08d2d5ec66a2dc",
-    "investedEvolutionHelp": "c1919bc007c568ac2cdf30dcb3c9f49981f5d98aa54e5dec4883a3b1da66a90a",
+    "investedEvolutionHelp": "76e6ebae035c2b0a398d6830b5932344cc53fd6412555dad4a24c771627a9859",
     "expenseDetails": "dec446918d6141edb0a133006e1e6a7224165d4d3e48d2ba6f1af04d052c5c69",
     "close": "7d9eb7acb13e24625c404401d8e88b2350e32162455885f18276cf802f7701ed",
     "categoryNotEditable": "39656edd1d821ccf138613abd684c43885d3a7d2376cdf05ac07665abf2c2ea5",
@@ -203,7 +203,7 @@
     "paidFromSavingsBox": "8151817a08e3cefbe93614c93af15707492e547058369e424f61b6922d6f4acb",
     "notFromSavingsBox": "727299ec377f1c975bc70d285a3eaf7ea7ccb2abd80e67920885c4ae9cc32585",
     "investedGapsTitle": "7d0aafbf20e8c9537d94f4ec307be6a208f6604b2875201c9786d79f6bd9b9dc",
-    "investedGapsHelp": "9229b04768da360b2084f4f0530b50e3598a738fc49c98ddf233f2324ac7164a",
+    "investedGapsHelp": "70257a97b24611ed3efb8bf1d1402e635b29d085849c47d119361de8ea7e005f",
     "otherComponents": "f97e9da0e3b879f0a9df979ae260a5f7e1371edb127c1862d4f861981166cdc1",
     "scopeTransaction": "9237628d6e75184a7f6fc2a8bfefa0c471e6d0d85b149782f3d7eeeb6eb59615",
     "rule_transaction": "8863281bc7901f76913263389bc1060bab5f7cbab3d3f0b3b43e90a558ca0d87",
@@ -223,7 +223,15 @@
     "estimatedDrop": "b774599a9cd1f9a734a815fc5cf99ad188547aee7c727468d51b73dfd02988f9",
     "dropWindow": "307416c5cce4726b5cada120350142c6c20c0a29b64bc3a2fb137b4da3b21213",
     "estimatedHelp": "3015706df987ba5d5f1df316294de02eea3bb84f23d0c97a95c16847c26516f9",
-    "acceptSuggestionTitle": "e74288d039237b148376335be968b9d618d60e85fe16fb90a4809ce760daf757"
+    "acceptSuggestionTitle": "e74288d039237b148376335be968b9d618d60e85fe16fb90a4809ce760daf757",
+    "investmentClasses": "f216505b95e1e44b5d1a55f41826d6455fe3129214edef53d7d3ac4ab0c4ac72",
+    "investmentClassesHelp": "91b5b78ffffde73c57980afb52cdaadd8977424184598c59932bd67361b5d01e",
+    "investmentClass": "4f3a9bd003974a5ed8c9ad65d4aeda3b8a0db6fd903e36e83a3a950624b09bbd",
+    "newInvestmentClass": "01b00fd6e4b4e30b9b538fcd2ad55ec8cf851cceecc04f9b4c204ebcbbac3625",
+    "deleteInvestmentClass": "e2d0a54968ead24efc0dffa6ac78fc606dceec34a0f586177a74a54cc2272cf8",
+    "deleteInvestmentClassConfirm": "f987d9d737f57f8d2974b0789e84d8c5afb871550f2040d6e35de29e3988377c",
+    "automaticClass": "96cf270e0e89a47c88cc6556d783f210341b01359688ba5d9d9c4860b6bc9c2f",
+    "unclassifiedInvestment": "1372a3810da5224a8d1007de41ff5f9bc16030f824f09ed65e954e00a1ade1a6"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -418,7 +426,7 @@
     "clearFilter": "Mostrar todos",
     "showExpensesOf": "Ver os gastos do mês de",
     "investedEvolution": "Evolução do patrimônio investido",
-    "investedEvolutionHelp": "Estimativa do dinheiro investido no fim de cada mês, por posições de cada conexão e por cofrinho: o saldo informado hoje, menos os aportes e mais os resgates feitos depois daquele mês. Rendimentos e oscilações passadas não são conhecidos, então meses anteriores mostram o dinheiro aplicado, não o valor de mercado da época.",
+    "investedEvolutionHelp": "Patrimônio investido no fim de cada mês, por classe de investimento. Meses com saldo diário guardado usam o último saldo; meses anteriores partem do próximo saldo guardado, descontando as compras e somando as vendas informadas no meio, então mostram o dinheiro aplicado, sem o rendimento e a variação de mercado de então.",
     "expenseDetails": "Detalhes do gasto",
     "close": "Fechar",
     "categoryNotEditable": "Primeiro inclua esta movimentação nos gastos (ou como reembolso) para definir a categoria.",
@@ -429,7 +437,7 @@
     "paidFromSavingsBox": "Pago pelo cofrinho",
     "notFromSavingsBox": "Não saiu de cofrinho",
     "investedGapsTitle": "Dinheiro saiu sem resgate informado.",
-    "investedGapsHelp": "Estes cofrinhos receberam mais do que guardam e devolveram: o restante pagou contas direto do cofrinho, o que o banco não informa. Até cada pagamento ser cadastrado (como lançamento manual pago pelo cofrinho), os meses anteriores mostram esses cofrinhos zerados.",
+    "investedGapsHelp": "Estas posições receberam mais do que guardam e devolveram: o restante saiu sem resgate informado, como boletos pagos direto do cofrinho. Até cada pagamento ser registrado (como lançamento manual pago pelo cofrinho), os meses anteriores as mostram zeradas.",
     "otherComponents": "Outros",
     "scopeTransaction": "Somente esta movimentação",
     "rule_transaction": "Regra: esta movimentação",
@@ -449,6 +457,14 @@
     "estimatedDrop": "Estimada",
     "dropWindow": "saldo caiu entre {start} e {end}",
     "estimatedHelp": "antes do primeiro saldo registrado",
-    "acceptSuggestionTitle": "Registrar pagamento pelo cofrinho"
+    "acceptSuggestionTitle": "Registrar pagamento pelo cofrinho",
+    "investmentClasses": "Classes de investimento",
+    "investmentClassesHelp": "Cada posição começa numa classe automática, pelo tipo e indexador. Escolha outra classe para uma posição, ou crie, renomeie e apague classes; uma posição numa classe apagada volta para a classe automática.",
+    "investmentClass": "Classe",
+    "newInvestmentClass": "Nova classe",
+    "deleteInvestmentClass": "Apagar",
+    "deleteInvestmentClassConfirm": "Apagar a classe {name}? As posições dela voltam para a classe automática.",
+    "automaticClass": "Automática ({name})",
+    "unclassifiedInvestment": "Sem classe"
   }
 }

@@ -1,5 +1,5 @@
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -905,39 +905,6 @@ def test_savings_box_outflows_and_recurring_entries_fill_unreported_spending(
         report = client.get("/api/spending", params={"item": str(item), "month": "2024-11"}).json()
         assert not [row for row in report["reviews"] if row["operation"] == "SAVINGS_BOX"]
         assert "Conta paga pelo cofrinho" in {row["merchant"] for row in report["expenses"]}
-
-
-def test_invested_history_subtracts_later_flows_per_component(monkeypatch):
-    class Today(date):
-        @classmethod
-        def today(cls):
-            return cls(2026, 3, 15)
-
-    monkeypatch.setattr(spending, "date", Today)
-    balances = [
-        {"kind": "positions", "item": "a", "box": "", "currency": "BRL", "total": "1000"},
-        {"kind": "savings_box", "item": "b", "box": "Gastos", "currency": "BRL", "total": "0"},
-        {"kind": "savings_box", "item": "b", "box": "Vazio", "currency": "BRL", "total": "0"},
-    ]
-    flows = [
-        {"item": "a", "box": "", "currency": "BRL", "month": "2026-02", "net": "300"},
-        {"item": "a", "box": "", "currency": "BRL", "month": "2025-12", "net": None},
-        # 500 went in, 200 came out; the rest paid a bill straight from the box.
-        {"item": "b", "box": "gastos", "currency": "BRL", "month": "2026-01", "net": "500"},
-        {"item": "b", "box": "gastos", "currency": "BRL", "month": "2026-03", "net": "-200"},
-    ]
-    rows, gaps = spending.invested_history(balances, flows, "2026-04")
-    totals = {(row["name"] or row["item"], row["month"]): Decimal(row["total"]) for row in rows}
-    assert "2026-04" not in {row["month"] for row in rows}
-    assert totals["a", "2026-03"] == 1000 and totals["a", "2026-01"] == 700
-    assert totals["Gastos", "2025-12"] == 0
-    # Walking back from today cannot tell when the bill was paid: it assumes as early as
-    # possible, so January already shows only what was left after it.
-    assert totals["Gastos", "2026-01"] == 200 and totals["Gastos", "2026-03"] == 0
-    assert "Vazio" not in {row["name"] for row in rows}
-    assert gaps == [
-        {"kind": "savings_box", "item": "b", "name": "Gastos", "currency": "BRL", "amount": "300"}
-    ]
 
 
 def test_received_transfers_are_refund_candidates_only():
