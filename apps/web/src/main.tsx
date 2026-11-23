@@ -26,6 +26,10 @@ import {
   MonthOverview,
 } from "./spending-overview";
 import {
+  InvestmentReturns,
+  type InvestmentReturnsData,
+} from "./investment-returns";
+import {
   TransactionDetailCell,
   type TransactionDetails,
 } from "./transaction-details";
@@ -78,6 +82,7 @@ type Spending = {
   investments?: InvestmentRow[];
   invested_history?: InvestedPoint[];
   invested_gaps?: InvestedGap[];
+  invested_returns?: InvestmentReturnsData;
   chart_month?: string | null;
   invested?: InvestedRow[];
   expenses: Expense[];
@@ -827,6 +832,15 @@ function App() {
                   <InvestedEvolution
                     rows={data.invested_history ?? []}
                     gaps={data.invested_gaps ?? []}
+                    locale={locale}
+                  />
+                </section>
+              )}
+              {(data.invested_returns?.rows ?? []).length > 0 && (
+                <section className="panel" aria-labelledby="investment-returns">
+                  <h2 id="investment-returns">{copy.investmentReturns}</h2>
+                  <InvestmentReturns
+                    data={data.invested_returns!}
                     locale={locale}
                   />
                 </section>

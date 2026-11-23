@@ -154,3 +154,56 @@ def test_funds_and_listed_assets_are_keyed_by_cnpj_and_ticker():
     assert investment_history.asset_key(fund) == "12345678000190"
     assert investment_history.asset_key({"type": "EQUITY", "symbol": "etfx11"}) == "ETFX11"
     assert investment_history.asset_key({"type": "EQUITY", "symbol": "BR STN"}) is None
+
+
+def test_returns_follow_each_model_weighted_by_value_and_ignore_flows(monkeypatch):
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 24)
+
+    monkeypatch.setattr(investment_history, "date", Today)
+    business = [
+        date(2025, 11, 1) + timedelta(days=n)
+        for n in range(390)
+        if (date(2025, 11, 1) + timedelta(days=n)).weekday() < 5
+    ]
+    rates = [{"series": "CDI", "day": str(day), "value": "0.05"} for day in business]
+    lca = snapshot("lca", "2026-11-20", "1000", indexer="CDI", name="LCA") | {"rate": "100"}
+    bond = snapshot(
+        "ntnb",
+        "2026-11-20",
+        "1000",
+        indexer="IPCA",
+        name="Tesouro IPCA+ com Juros Semestrais 2037 (NTNB)",
+    )
+    bond |= {"subtype": "TREASURY", "due_date": "2037-05-15"}
+    # The bond loses 1% on 11-10 and drops 3% on the 11-16 coupon payment.
+    prices = [
+        {
+            "asset": "Tesouro IPCA+ com Juros Semestrais|2037-05-15",
+            "day": str(day),
+            "price": str(price),
+        }
+        for day, price in [
+            (date(2026, 10, 30), 100),
+            (date(2026, 11, 10), 99),
+            (date(2026, 11, 16), 96),
+            (date(2026, 11, 19), 96),
+        ]
+    ]
+    # A purchase in the month changes the value, not the return.
+    flows = [{"position": "lca", "date": "2026-11-05", "net": "500"}]
+    result = investment_history.invested_returns([lca, bond], flows, {}, CLASSES, rates, prices)
+    returns = {row["name"] or row["kind"]: row["returns"] for row in result["rows"]}
+    november = sum(date(2026, 10, 31) <= day < date(2026, 11, 23) for day in business)
+    assert Decimal(returns["LCA"]["month"]) == pytest.approx(
+        Decimal("1.0005") ** november - 1, abs=Decimal("1e-6")
+    )
+    assert Decimal(returns[bond["name"]]["month"]) == pytest.approx(
+        Decimal("-0.01"), abs=Decimal("1e-6")
+    )
+    portfolio = Decimal(returns["portfolio"]["month"])
+    assert Decimal(returns[bond["name"]]["month"]) < portfolio < Decimal(returns["LCA"]["month"])
+    assert Decimal(result["cdi"]["month"]) == Decimal(returns["LCA"]["month"])
+    assert result["uncovered"] == [] and result["series"][-1]["day"] == "2026-11-23"

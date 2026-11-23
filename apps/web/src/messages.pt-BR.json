@@ -231,7 +231,20 @@
     "deleteInvestmentClass": "e2d0a54968ead24efc0dffa6ac78fc606dceec34a0f586177a74a54cc2272cf8",
     "deleteInvestmentClassConfirm": "f987d9d737f57f8d2974b0789e84d8c5afb871550f2040d6e35de29e3988377c",
     "automaticClass": "96cf270e0e89a47c88cc6556d783f210341b01359688ba5d9d9c4860b6bc9c2f",
-    "unclassifiedInvestment": "1372a3810da5224a8d1007de41ff5f9bc16030f824f09ed65e954e00a1ade1a6"
+    "unclassifiedInvestment": "1372a3810da5224a8d1007de41ff5f9bc16030f824f09ed65e954e00a1ade1a6",
+    "investmentReturns": "173f03a94eff0e58b23eb7fe0ef2221e71b5fa3c314ede1cfaba7a9f6665ac16",
+    "investmentReturnsHelp": "639fa4d38aef9a5b975e186cb7fedf82f661692fa0be13c57331136ba38c06ca",
+    "investment": "40754039ee2b7831184ebb4d877f454db6ea8f900a07a93ccb58e65b057ad2f5",
+    "returnsPortfolio": "1853eb2e9e5ed2bcc1d03b5a49cf407f2e43851363a8ffd0ce5ab7aa37ca8309",
+    "returnsCdi": "128c6e6c753a3a0bbcbdaa405c051a2261db9b7a5107accd8a7a84641032a66c",
+    "returnsOfCdi": "0cc13deefe57f6520f4653c15fc030c61d6dd47b9f2735a632cfb297e5332ee3",
+    "returnsChart": "743a0a149dfd9c6ae1f3b0bd97fe832528ffcc080e645a80613a584044dc8a5f",
+    "returnsUncovered": "e68f73b49bdafabc4664a380a961fccecf60055357341e7a7474233cfdb872c5",
+    "periodMonth": "310ca503ef36f177ddbc760463fcaec1edc6eca12bfd590ad7bb244b31e59543",
+    "period3m": "bfd45132a8c6d6346dca8f2a60ab4b5bad371249f628e2be10a807fdf440d069",
+    "period6m": "8ed94b4cf82d95487a6134b344b06ace905909dcbae2a50c22608937de66f6a4",
+    "period12m": "5f58bdda2d4c6917bcc354a0172d161efd5ad7edb4dbf342143054217dc10f85",
+    "periodYtd": "757fd1902294c03e5ae4fa916f41cd1b7c5b21a27792ba3611285612e49f2664"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -465,6 +478,19 @@
     "deleteInvestmentClass": "Apagar",
     "deleteInvestmentClassConfirm": "Apagar a classe {name}? As posições dela voltam para a classe automática.",
     "automaticClass": "Automática ({name})",
-    "unclassifiedInvestment": "Sem classe"
+    "unclassifiedInvestment": "Sem classe",
+    "investmentReturns": "Rentabilidade dos investimentos",
+    "investmentReturnsHelp": "Rentabilidade ponderada pelo tempo até {date}, antes do IR. Cada posição rende pela sua taxa (CDI, Selic ou prefixada) ou segue seu preço público de mercado, então aportes, resgates e pagamentos feitos pelos cofrinhos não contam como ganho ou perda, e cupons do Tesouro contam como rendimento. Uma posição mantida por menos tempo que o período mostra a rentabilidade desde a compra.",
+    "investment": "Investimento",
+    "returnsPortfolio": "Carteira",
+    "returnsCdi": "CDI",
+    "returnsOfCdi": "{percent} do CDI",
+    "returnsChart": "Rentabilidade acumulada em 12 meses",
+    "returnsUncovered": "Fora do cálculo: estas posições não têm taxa nem preço público.",
+    "periodMonth": "Mês",
+    "period3m": "3 meses",
+    "period6m": "6 meses",
+    "period12m": "12 meses",
+    "periodYtd": "No ano"
   }
 }
