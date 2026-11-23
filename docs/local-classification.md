@@ -30,7 +30,8 @@ Totals, debit reviews, and other categories stay under the existing rules.
 
 ## Validation and caching
 
-Ollama receives a JSON schema with the supported categories and a required
+Ollama receives a JSON schema listing the current categories and subcategories
+(as `Category / Subcategory`) and a required
 review flag. The API validates the full response and returns only its category.
 Unknown categories, malformed output, and incomplete responses are discarded.
 The cache holds up to 128 proposals or abstentions in memory. Its keys include

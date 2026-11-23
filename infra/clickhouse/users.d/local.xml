@@ -5,6 +5,8 @@
       <log_query_threads>0</log_query_threads>
       <max_execution_time>10</max_execution_time>
       <max_memory_usage>512000000</max_memory_usage>
+      <!-- Small data: fewer read streams keep FINAL scans inside the memory limit. -->
+      <max_threads>4</max_threads>
     </default>
     <health>
       <readonly>1</readonly>
