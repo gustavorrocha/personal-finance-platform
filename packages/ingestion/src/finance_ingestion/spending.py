@@ -45,6 +45,8 @@ REFUNDS = {"ESTORNO", "REFUND"}
 # fees, services, shopping, digital services, groceries, food, travel, leisure,
 # housing, health and transport.
 SPENDING_GROUPS = {"02", "07", "08", "09", "10", "11", "12", "14", "17", "18", "19"}
+# Credit category groups that are never a refund of an expense: income, investments.
+NOT_REIMBURSEMENT = {"01", "03"}
 CARD_BILL_PAYMENT = re.compile(r"^pagamento (de )?(fatura|cart[aã]o)")
 # Pluggy category names; a debit moves money in, a credit takes it out.
 INVESTMENT_CATEGORIES = {
@@ -194,10 +196,7 @@ def spending_fields(
         or own_transfer
         or bill_payment
         or (operation in NON_SPENDING and not mislabeled_card_purchase)
-        or (
-            transfer_category
-            and (direction != "DEBIT" or provider_category == "same person transfer")
-        )
+        or (transfer_category and provider_category == "same person transfer")
     )
     # The bank's own consumption category is evidence even for a PIX or boleto payment.
     spending_category = business["category_id"][:2] in SPENDING_GROUPS and not transfer_category
@@ -205,6 +204,14 @@ def spending_fields(
     if not excluded:
         if direction == "CREDIT" and operation in REFUNDS:
             kind = "refund"
+        elif (
+            direction == "CREDIT"
+            and (operation in PAYMENT_RAILS or transfer_category)
+            and business["category_id"][:2] not in NOT_REIMBURSEMENT
+        ):
+            # A transfer received from someone else, such as a friend's share of a dinner.
+            # It counts only if the operator marks it as a refund of an expense.
+            kind = "reimbursable"
         elif direction == "DEBIT" and operation not in REFUNDS:
             has_evidence = spending_category or (
                 operation not in PAYMENT_RAILS

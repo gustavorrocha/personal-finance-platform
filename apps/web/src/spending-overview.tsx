@@ -129,17 +129,23 @@ function Legend({ locale }: { locale: Locale }) {
 export function MonthlyComparison({
   rows,
   month,
+  end = month,
   locale,
   onSelect,
   disabled,
-}: Props & { onSelect: (month: string) => void; disabled: boolean }) {
+}: Props & {
+  /** Last month on the axis; the selected month is highlighted inside it. */
+  end?: string;
+  onSelect: (month: string) => void;
+  disabled: boolean;
+}) {
   const copy = messages[locale];
   return (
     <>
       <p>{copy.monthlyComparisonHelp}</p>
       <Legend locale={locale} />
       {currencies(rows).map((currency) => {
-        const months = monthlyTotals(rows, currency, month, 13);
+        const months = monthlyTotals(rows, currency, end, 13);
         const shown = months.slice(1);
         const max = Math.max(1, ...shown.map((entry) => entry.total));
         const money = (value: number) =>
@@ -410,16 +416,21 @@ export function InvestmentOverview({ rows, month, locale }: InvestmentProps) {
 export function InvestmentComparison({
   rows,
   month,
+  end = month,
   locale,
   onSelect,
   disabled,
-}: InvestmentProps & { onSelect: (month: string) => void; disabled: boolean }) {
+}: InvestmentProps & {
+  end?: string;
+  onSelect: (month: string) => void;
+  disabled: boolean;
+}) {
   const copy = messages[locale];
   return (
     <>
       <p>{copy.investmentComparisonHelp}</p>
       {investmentCurrencies(rows).map((currency) => {
-        const months = monthlyInvestments(rows, currency, month);
+        const months = monthlyInvestments(rows, currency, end);
         const max = Math.max(1, ...months.map((entry) => Math.abs(entry.net)));
         const money = (value: number) =>
           formatMoney(String(value), currency, locale);
@@ -571,77 +582,184 @@ export function InvestedTotal({
   });
 }
 
-/** Invested money at the end of each month: today's reported balances, minus the
- * contributions and plus the withdrawals made after that month. */
+export type InvestedPoint = {
+  month: string;
+  currency: string;
+  kind: "positions" | "savings_box";
+  item: string;
+  name: string;
+  total: string;
+};
+export type InvestedGap = {
+  kind: "positions" | "savings_box";
+  item: string;
+  name: string;
+  currency: string;
+  amount: string;
+};
+
+// Categorical slots in fixed order; a seventh component folds into "Other".
+const SERIES = 6;
+
+/** Invested money at the end of each month, stacked by connection positions and
+ * savings boxes. Estimated from today's balances and the flows reported since. */
 export function InvestedEvolution({
   rows,
+  gaps,
   locale,
+  positionsLabel,
 }: {
-  rows: { month: string; currency: string; total: string }[];
+  rows: InvestedPoint[];
+  gaps: InvestedGap[];
   locale: Locale;
+  positionsLabel: (item: string) => string;
 }) {
   const copy = messages[locale];
+  const label = (row: { kind: string; item: string; name: string }) =>
+    row.kind === "positions" ? positionsLabel(row.item) : row.name;
   return (
     <>
       <p>{copy.investedEvolutionHelp}</p>
+      {gaps.length > 0 && (
+        <div className="notice" role="note">
+          <p>
+            <strong>{copy.investedGapsTitle}</strong> {copy.investedGapsHelp}
+          </p>
+          <ul>
+            {gaps.map((gap) => (
+              <li key={`${gap.item}-${gap.name}-${gap.currency}`}>
+                {label(gap)}: {formatMoney(gap.amount, gap.currency, locale)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {[...new Set(rows.map((row) => row.currency))].sort().map((currency) => {
-        const points = rows.filter((row) => row.currency === currency);
-        const values = points.map((row) => Number(row.total));
-        const max = Math.max(1, ...values);
+        const own = rows.filter((row) => row.currency === currency);
+        const months = [...new Set(own.map((row) => row.month))].sort();
+        const keyOf = (row: InvestedPoint) =>
+          `${row.kind}|${row.item}|${row.name}`;
+        // Fixed order (positions, then boxes by name) so a color always means the same
+        // component, whatever the amounts.
+        const ranked = [...new Set(own.map(keyOf))].sort((a, b) =>
+          a.localeCompare(b),
+        );
+        const slot = new Map(
+          ranked.map((key, index) => [key, Math.min(index, SERIES - 1)]),
+        );
+        const names = new Map<number, string>();
+        for (const row of own) {
+          const index = slot.get(keyOf(row)) ?? 0;
+          names.set(
+            index,
+            index === SERIES - 1 && ranked.length > SERIES
+              ? copy.otherComponents
+              : label(row),
+          );
+        }
+        const series = [...names.entries()].sort(([a], [b]) => a - b);
+        const totals = months.map((month) => {
+          const values = new Array<number>(series.length).fill(0);
+          for (const row of own.filter((entry) => entry.month === month))
+            values[slot.get(keyOf(row)) ?? 0] += Number(row.total);
+          return {
+            month,
+            values,
+            total: values.reduce((sum, value) => sum + value, 0),
+          };
+        });
+        const max = Math.max(1, ...totals.map((entry) => entry.total));
         const money = (value: number) =>
           formatMoney(String(value), currency, locale);
         return (
           <div className="chart" key={currency}>
             <h3>{currency}</h3>
+            <ul className="legend">
+              {series.map(([index, name]) => (
+                <li key={index}>
+                  <i
+                    className={`swatch series-${index + 1}`}
+                    aria-hidden="true"
+                  />
+                  {name}
+                </li>
+              ))}
+            </ul>
             <div className="month-chart" role="list">
-              {points.map((row, index) => (
+              {totals.map((entry) => (
                 <div
                   className="month-column"
                   role="listitem"
-                  key={row.month}
-                  aria-label={`${monthLabel(row.month, locale)}: ${money(values[index])}`}
+                  key={entry.month}
+                  aria-label={`${monthLabel(entry.month, locale, true)}: ${money(entry.total)}`}
                 >
                   <span className="month-tooltip" aria-hidden="true">
-                    <b>{monthLabel(row.month, locale, true)}</b>
-                    <span>{money(values[index])}</span>
+                    <b>{monthLabel(entry.month, locale, true)}</b>
+                    {series.map(([index, name]) =>
+                      entry.values[index] ? (
+                        <span key={index}>
+                          {name}: {money(entry.values[index])}
+                        </span>
+                      ) : null,
+                    )}
+                    <b>
+                      {copy.total}: {money(entry.total)}
+                    </b>
                   </span>
                   <span className="month-plot" aria-hidden="true">
                     <span
                       className="month-stack"
-                      style={{
-                        height: `${(Math.max(0, values[index]) / max) * 100}%`,
-                      }}
+                      style={{ height: `${(entry.total / max) * 100}%` }}
                     >
-                      <span
-                        className="swatch invested"
-                        style={{ flexGrow: 1 }}
-                      />
+                      {[...series].reverse().map(([index]) => (
+                        <span
+                          key={index}
+                          className={`swatch series-${index + 1}`}
+                          style={{ flexGrow: entry.values[index] }}
+                        />
+                      ))}
                     </span>
                   </span>
                   <span className="month-label" aria-hidden="true">
-                    {monthLabel(row.month, locale)}
+                    {monthLabel(entry.month, locale)}
                   </span>
                 </div>
               ))}
             </div>
             <details>
               <summary>{copy.showTable}</summary>
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">{copy.month}</th>
-                    <th scope="col">{copy.totalInvested}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {points.map((row, index) => (
-                    <tr key={row.month}>
-                      <td>{monthLabel(row.month, locale, true)}</td>
-                      <td>{money(values[index])}</td>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">{copy.month}</th>
+                      {series.map(([index, name]) => (
+                        <th scope="col" className="numeric" key={index}>
+                          {name}
+                        </th>
+                      ))}
+                      <th scope="col" className="numeric">
+                        {copy.total}
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {totals.map((entry) => (
+                      <tr key={entry.month}>
+                        <th scope="row">
+                          {monthLabel(entry.month, locale, true)}
+                        </th>
+                        {series.map(([index]) => (
+                          <td className="numeric" key={index}>
+                            {money(entry.values[index])}
+                          </td>
+                        ))}
+                        <td className="numeric">{money(entry.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </details>
           </div>
         );

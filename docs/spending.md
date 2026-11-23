@@ -71,6 +71,11 @@ such as a boleto paid with the money in a box; only the box balance drops.
   a box counts once. Do not also include a box outflow for a bill that a manual
   entry already covers.
 
+**Transfers received** lists the month's PIX, TED and DOC credits from other
+people (not between own accounts, not income or investments). **Count as
+refund** subtracts one from spending, such as a friend's share of a dinner, and
+asks for its subcategory; **Not a refund** hides it among the decided ones.
+
 Manual entries are append-only events in `core.manual_expenses`. Outflows are
 computed by `analytics.savings_box_outflows`.
 
@@ -134,11 +139,15 @@ month before. Select a category or subcategory to list that month's expenses
 in it. **Recent expenses** shows the latest 10; **Show more** opens the full,
 searchable list.
 
-**Invested wealth over time** estimates invested money at the end of each of
-the last 12 months: today's reported balances of positions and savings boxes,
+**Invested wealth over time** stacks, for each of the last 12 months, the
+positions of each connection and each savings box: today's reported balances of positions and savings boxes,
 minus the contributions and plus the withdrawals made after each month.
 Providers report only current balances, so past yield and market changes are
-not included; earlier months show money put in rather than its value then. Card purchases count in
+not included; earlier months show money put in rather than its value then. A
+savings box that received more than it holds and returned lost the rest without
+a reported withdrawal; the chart warns about it and draws the box at zero where
+the estimate would be negative, until those payments are registered as manual
+entries paid from the box. Card purchases count in
 the month of their transaction date, not the month of their bill.
 
 **Net invested** shows, for the same month, contributions minus withdrawals,
@@ -224,17 +233,19 @@ expense can belong to a category directly or to one of its subcategories.
 
 Each expense takes the first match of:
 
-1. a rule for its merchant;
-2. a rule for its specific provider category, such as `Food delivery`;
-3. a rule for its card MCC, such as 5812 for restaurants;
-4. a rule for its provider category group, such as `Groceries`.
+1. a rule for that single transaction, such as one PIX to a person;
+2. a rule for its merchant;
+3. a rule for its specific provider category, such as `Food delivery`;
+4. a rule for its card MCC, such as 5812 for restaurants;
+5. a rule for its provider category group, such as `Groceries`.
 
 A specific provider category wins over the MCC because an MCC describes the
 merchant, not the purchase: food delivery is billed under the restaurant's MCC.
 A broad provider category loses to the MCC, which corrects restaurants filed as
 groceries. In **Recent expenses**, choose a category and where it applies: **This
-merchant**, **Every card purchase with MCC**, or **Every expense in the bank
-category**. **Automatic (rules)** removes the rule at that level. The expense
+merchant**, **Only this transaction**, **Every card purchase with MCC**, or
+**Every expense in the bank category**. PIX, TED and DOC transfers and refunds
+default to **Only this transaction**. **Automatic (rules)** removes the rule at that level. The expense
 shows which rule classified it.
 
 The initial categories and the provider category and MCC rules were seeded on

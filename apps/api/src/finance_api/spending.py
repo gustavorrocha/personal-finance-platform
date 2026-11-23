@@ -42,6 +42,7 @@ CATEGORY_LIST = (
 )
 # Where a category correction applies: one merchant, one card MCC or one provider category.
 RULE_KEYS = {
+    "transaction": "concat(toString(item_key), ':', toString(transaction_key))",
     "merchant": "merchant_key",
     "mcc": "ifNull(toString(mcc), '')",
     "provider": "provider_category_id",
@@ -53,7 +54,7 @@ class Rule(BaseModel):
 
     item: UUID
     transaction: UUID
-    scope: Literal["merchant", "mcc", "provider"] = "merchant"
+    scope: Literal["transaction", "merchant", "mcc", "provider"] = "merchant"
     # None clears the rule so the transaction falls back to automatic classification.
     category: UUID | None
 
@@ -101,30 +102,96 @@ class SuggestionRequest(BaseModel):
     transactions: list[UUID] = Field(min_length=1, max_length=BATCH_LIMIT)
 
 
-def invested_history(balances: list[dict], flows: list[dict], month: str) -> list[dict]:
-    """Invested money at the end of each of the 12 months up to `month`, per currency.
+def invested_history(
+    balances: list[dict], flows: list[dict], month: str
+) -> tuple[list[dict], list[dict]]:
+    """Invested money per component at the end of the 12 months up to `month`.
 
-    Providers report only today's balances. Earlier months subtract the contributions
-    and add back the withdrawals made after them, so yield and market changes of past
-    months are not reconstructed.
+    A component is the positions of one connection or one savings box. Providers report
+    only today's balances, so earlier months subtract the contributions and add back the
+    withdrawals made after them; past yield and market changes are not reconstructed.
+    A component that would fall below zero lost money without a reported withdrawal,
+    such as a bill paid straight from a savings box: it is drawn at zero and reported
+    as a gap.
     """
     today = date.today().strftime("%Y-%m")
     first = date.fromisoformat(f"{month}-01")
     index = first.year * 12 + first.month - 1
     months = [month_start(index - offset).strftime("%Y-%m") for offset in range(11, -1, -1)]
-    rows = []
-    for currency in sorted({row["currency"] for row in balances}):
-        current = sum(Decimal(row["total"] or 0) for row in balances if row["currency"] == currency)
-        for slot in months:
-            if slot > today:
-                continue
-            later = sum(
+    months = [slot for slot in months if slot <= today]
+    components: dict[tuple, dict] = {}
+    for row in balances:
+        key = (row["kind"], row["item"], row["box"].lower(), row["currency"])
+        entry = components.setdefault(
+            key, {"kind": row["kind"], "item": row["item"], "name": row["box"], "total": 0}
+        )
+        entry["total"] += Decimal(row["total"] or 0)
+    rows, gaps = [], []
+    for (kind, item, box, currency), component in sorted(components.items()):
+        later = {
+            slot: sum(
                 Decimal(row["net"] or 0)
                 for row in flows
-                if row["currency"] == currency and slot < row["month"] <= today
+                if row["item"] == item
+                and row["box"].lower() == box
+                and row["currency"] == currency
+                and slot < row["month"] <= today
             )
-            rows.append({"month": slot, "currency": currency, "total": str(current - later)})
-    return rows
+            for slot in months
+        }
+        values = {slot: component["total"] - later[slot] for slot in months}
+        if kind == "savings_box":
+            # A box holds nothing before its first reported movement.
+            opened = min(
+                (
+                    row["month"]
+                    for row in flows
+                    if row["item"] == item and row["box"].lower() == box
+                ),
+                default=today,
+            )
+            values = {
+                slot: value if slot >= opened else Decimal(0) for slot, value in values.items()
+            }
+        if not any(values.values()):
+            continue
+        if kind == "savings_box":
+            # A box starts empty: what went in minus what came out, beyond today's balance,
+            # left without a reported withdrawal. Yield only pushes the other way.
+            shortfall = (
+                sum(
+                    Decimal(row["net"] or 0)
+                    for row in flows
+                    if row["item"] == item
+                    and row["box"].lower() == box
+                    and row["currency"] == currency
+                )
+                - component["total"]
+            )
+        else:
+            shortfall = -min([Decimal(0), *values.values()])
+        if shortfall >= 1:
+            gaps.append(
+                {
+                    "kind": kind,
+                    "item": item,
+                    "name": component["name"],
+                    "currency": currency,
+                    "amount": str(shortfall),
+                }
+            )
+        rows += [
+            {
+                "month": slot,
+                "currency": currency,
+                "kind": kind,
+                "item": item,
+                "name": component["name"],
+                "total": str(max(Decimal(0), values[slot])),
+            }
+            for slot in months
+        ]
+    return rows, gaps
 
 
 def month_start(index: int) -> date:
@@ -191,9 +258,12 @@ async def spending(
         "investments": [],
         "invested": [],
         "invested_history": [],
+        "invested_gaps": [],
+        "chart_month": None,
         "expenses": [],
         "has_more_expenses": False,
         "reviews": [],
+        "receipts": [],
         "categories": await dashboard_query(CATEGORY_LIST),
     }
     if selected is None:
@@ -218,9 +288,19 @@ async def spending(
         **filters,
     )
     months = first.year * 12 + first.month - 1
+    # Charts keep a fixed 12-month axis ending at the latest month with data; only a
+    # month older than that axis moves it.
+    latest = date.fromisoformat(f"{max(month, selected['latest_month'])}-01")
+    end = latest.year * 12 + latest.month - 1
+    if months <= end - HISTORY_MONTHS + 1:
+        end = months
+    result["chart_month"] = month_start(end).strftime("%Y-%m")
     window = filters | {
-        "since": max(month_start(months - HISTORY_MONTHS + 1), date(1970, 1, 1)).isoformat(),
-        "until": month_start(months + 1).isoformat(),
+        # The month before the selected one is always needed for comparisons.
+        "since": max(
+            month_start(min(months - 1, end - HISTORY_MONTHS + 1)), date(1970, 1, 1)
+        ).isoformat(),
+        "until": month_start(end + 1).isoformat(),
     }
     in_window = (
         f"WHERE {scope} AND economic_date >= {{since:Date}} AND economic_date < {{until:Date}} "
@@ -255,16 +335,25 @@ async def spending(
         "GROUP BY currency, source ORDER BY currency, source FORMAT JSONEachRow",
         **filters,
     )
-    result["invested_history"] = invested_history(
-        result["invested"],
-        await dashboard_query(
-            "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, currency, "
-            "toString(sumIf(amount, kind = 'contribution') - sumIf(amount, kind = 'withdrawal')) "
-            f"AS net FROM analytics.investment_flows WHERE {scope} "
-            "GROUP BY month, currency FORMAT JSONEachRow",
-            **filters,
-        ),
-        month,
+    balances = await dashboard_query(
+        "SELECT 'positions' AS kind, toString(item_key) AS item, '' AS box, currency, "
+        "toString(sum(balance)) AS total FROM analytics.invested_balances "
+        f"WHERE {scope} AND source = 'positions' GROUP BY item, currency "
+        "UNION ALL SELECT 'savings_box', toString(item_key), name, currency, toString(balance) "
+        f"FROM analytics.savings_boxes WHERE {scope} FORMAT JSONEachRow",
+        **filters,
+    )
+    flows = await dashboard_query(
+        "SELECT toString(item_key) AS item, savings_box AS box, currency, "
+        "formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, "
+        "toString(ifNull(sumIf(amount, kind = 'contribution'), 0) "
+        "- ifNull(sumIf(amount, kind = 'withdrawal'), 0)) "
+        f"AS net FROM analytics.investment_flows WHERE {scope} "
+        "GROUP BY item, box, currency, month FORMAT JSONEachRow",
+        **filters,
+    )
+    result["invested_history"], result["invested_gaps"] = invested_history(
+        balances, flows, result["chart_month"]
     )
     search = search.strip()
     expense_filters = dict(filters, offset=str((page - 1) * EXPENSE_PAGE_SIZE))
@@ -291,7 +380,7 @@ async def spending(
         f"SELECT * FROM (SELECT {details}, toString(net_amount) AS amount, "
         "provider_category_id, operation, "
         f"'POSTED' AS status FROM analytics.spending_dashboard {where}AND included "
-        f"UNION ALL SELECT {details}, toString(amount) AS amount, '' AS provider_category_id, "
+        f"UNION ALL SELECT {details}, toString(amount) AS amount, provider_category_id, "
         "'' AS operation, "
         f"'PENDING' AS status FROM analytics.pending_card_spending {where}) "
         f"{search_filter}ORDER BY date DESC, transaction_time DESC, item, id "
@@ -306,6 +395,16 @@ async def spending(
         f"{TRANSACTION_DETAILS}"
         # The review is a backlog: pending debits from every month, then recent decisions.
         f"FROM analytics.spending_dashboard WHERE {scope} AND reviewable "
+        "ORDER BY (decision != ''), date DESC, transaction_key DESC LIMIT 100 FORMAT JSONEachRow",
+        **filters,
+    )
+    # Transfers received this month that may refund part of an expense.
+    result["receipts"] = await dashboard_query(
+        "SELECT item_key AS item, transaction_key AS id, economic_date AS date, currency, "
+        "toString(abs(net_amount)) AS amount, merchant_label AS merchant, operation, decision, "
+        "category, provider_category_id, "
+        f"{TRANSACTION_DETAILS}"
+        f"FROM analytics.spending_dashboard {where}AND reimbursable "
         "ORDER BY (decision != ''), date DESC, transaction_key DESC LIMIT 100 FORMAT JSONEachRow",
         **filters,
     )
@@ -332,11 +431,15 @@ async def active_category(category: UUID) -> dict:
 
 @router.post("/rules", status_code=204, dependencies=[Depends(same_origin)])
 async def save_rule(rule: Rule) -> Response:
-    where = "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} AND included "
     scope = {"item": str(rule.item), "transaction": str(rule.transaction)}
+    # Counted expenses, including card purchases still pending: they are already in the month.
+    columns = "item_key, transaction_key, merchant_key, mcc, provider_category_id"
     rows = await dashboard_query(
-        f"SELECT {RULE_KEYS[rule.scope]} AS rule_key "
-        f"FROM analytics.spending_dashboard {where}FORMAT JSONEachRow",
+        f"SELECT {RULE_KEYS[rule.scope]} AS rule_key FROM ("
+        f"SELECT {columns} FROM analytics.spending_dashboard WHERE included "
+        f"UNION ALL SELECT {columns} FROM analytics.pending_card_spending) "
+        "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} "
+        "LIMIT 1 FORMAT JSONEachRow",
         **scope,
     )
     if not rows:
@@ -510,7 +613,10 @@ async def archive_category(category_id: UUID) -> Response:
 
 @router.post("/reviews", status_code=204, dependencies=[Depends(same_origin)])
 async def save_review(review: Review) -> Response:
-    where = "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} AND reviewable "
+    where = (
+        "WHERE item_key = {item:UUID} AND transaction_key = {transaction:UUID} "
+        "AND (reviewable OR reimbursable) "
+    )
     scope = {"item": str(review.item), "transaction": str(review.transaction)}
     if not await dashboard_query(
         f"SELECT transaction_key FROM analytics.spending_dashboard {where}FORMAT JSONEachRow",

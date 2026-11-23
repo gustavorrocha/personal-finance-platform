@@ -31,6 +31,9 @@ export function TransactionDetailCell({
   entry,
   locale,
   connection,
+  compact = false,
+  element = "td",
+  onOpen,
 }: {
   entry: TransactionDetails & {
     merchant: string;
@@ -39,6 +42,10 @@ export function TransactionDetailCell({
   };
   locale: Locale;
   connection?: string;
+  /** Only the description, merchant and connection; the rest lives in the detail window. */
+  compact?: boolean;
+  element?: "td" | "div";
+  onOpen?: () => void;
 }) {
   const copy = messages[locale];
   const description = entry.description?.trim()
@@ -49,9 +56,33 @@ export function TransactionDetailCell({
     timeStyle: "short",
     timeZone: "UTC",
   });
+  const Element = element;
+  const title = description || entry.operation || copy.unavailable;
+  if (compact)
+    return (
+      <Element className="transaction-details">
+        <div>
+          {onOpen ? (
+            <button type="button" className="link-button" onClick={onOpen}>
+              {title}
+            </button>
+          ) : (
+            title
+          )}
+        </div>
+        {entry.operation === "SAVINGS_BOX" && (
+          <small>{copy.savingsBoxOutflow}</small>
+        )}
+        {entry.operation === "MANUAL" && <small>{copy.manualEntry}</small>}
+        {entry.merchant && description !== entry.merchant && (
+          <small>{entry.merchant}</small>
+        )}
+        {connection && <small>{connection}</small>}
+      </Element>
+    );
   return (
-    <td className="transaction-details">
-      <div>{description || entry.operation || copy.unavailable}</div>
+    <Element className="transaction-details">
+      <div>{title}</div>
       {entry.operation === "SAVINGS_BOX" && (
         <small>{copy.savingsBoxOutflow}</small>
       )}
@@ -110,6 +141,6 @@ export function TransactionDetailCell({
           )}
         </small>
       )}
-    </td>
+    </Element>
   );
 }
