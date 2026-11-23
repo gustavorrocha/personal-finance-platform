@@ -200,6 +200,8 @@
     "changeCategory": "2b31046ef3e9f88c963ee1483cf8f88dce588c43d1fe46f96ef0697179a6c6aa",
     "sameMerchant": "6c07b418285dffb2125177a0ad9ce8e6046100f78cc9e0cbbcb0ae146b2a68c9",
     "sameCategory": "284680aa5db1a38eaa6a702723d2e855a32ed161c02a988e9c33ffc36cb2392b",
+    "paidFromSavingsBox": "8151817a08e3cefbe93614c93af15707492e547058369e424f61b6922d6f4acb",
+    "notFromSavingsBox": "727299ec377f1c975bc70d285a3eaf7ea7ccb2abd80e67920885c4ae9cc32585",
     "investedGapsTitle": "7d0aafbf20e8c9537d94f4ec307be6a208f6604b2875201c9786d79f6bd9b9dc",
     "investedGapsHelp": "9229b04768da360b2084f4f0530b50e3598a738fc49c98ddf233f2324ac7164a",
     "otherComponents": "f97e9da0e3b879f0a9df979ae260a5f7e1371edb127c1862d4f861981166cdc1",
@@ -209,7 +211,19 @@
     "receiptsHelp": "d8a0490869d02dfedc96b965c3d99bdcbce23e101bfc6917eaf288b89aea46a3",
     "countAsRefund": "b5d71d70bf1e7c3f111b981aa7a4a6e7f1f009c7fb9d9610742087e5e91a3aa1",
     "notRefund": "e75819cfd950387c1ce3cefa8080ce4a28459326955897788580b8b608291932",
-    "decidedReceipts": "8fba169f13c0152bf90a092753f2c1319144e7374c3796ca271c89d94a8b7ad4"
+    "decidedReceipts": "8fba169f13c0152bf90a092753f2c1319144e7374c3796ca271c89d94a8b7ad4",
+    "boxSuggestions": "0c53d351be38ef1e7a058fb85a512315dbcf3d6d3a0bfdc1d7320ac698643dcf",
+    "boxSuggestionsHelp": "213e45c5a4d5d8c123359ccdc1ee05dd17a52122a7d0b9a3eb46fb6af77d421a",
+    "boxYield": "ebbf5862f57d9685a2e337bbbd1b08e7915f6ae89de48bd642a7bf5bac2d93aa",
+    "boxGap": "aeff5f986bfb8595e6d23c6d8457f3918228b3943269714e35e8233a10d1d966",
+    "observedRange": "287c6848a8502605fc694956b2cf85404934d0080e6abda3a5ebe10951f84959",
+    "acceptSuggestion": "89713b9c9c1b8f659c9f49db25e4a47886dd673fee248c3f650391f09a759cef",
+    "ignoreSuggestion": "fce77c34d3fec98733dd4c29f1592a92e60e93e43f0bfe8690c91160ae7efebe",
+    "observedDrop": "64fa8a14a90feef5d86951352195391dfead1194f932aaed0755021c504e2a15",
+    "estimatedDrop": "b774599a9cd1f9a734a815fc5cf99ad188547aee7c727468d51b73dfd02988f9",
+    "dropWindow": "307416c5cce4726b5cada120350142c6c20c0a29b64bc3a2fb137b4da3b21213",
+    "estimatedHelp": "3015706df987ba5d5f1df316294de02eea3bb84f23d0c97a95c16847c26516f9",
+    "acceptSuggestionTitle": "e74288d039237b148376335be968b9d618d60e85fe16fb90a4809ce760daf757"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -412,6 +426,8 @@
     "changeCategory": "Alterar categoria",
     "sameMerchant": "Gastos deste estabelecimento",
     "sameCategory": "Este mês nesta categoria",
+    "paidFromSavingsBox": "Pago pelo cofrinho",
+    "notFromSavingsBox": "Não saiu de cofrinho",
     "investedGapsTitle": "Dinheiro saiu sem resgate informado.",
     "investedGapsHelp": "Estes cofrinhos receberam mais do que guardam e devolveram: o restante pagou contas direto do cofrinho, o que o banco não informa. Até cada pagamento ser cadastrado (como lançamento manual pago pelo cofrinho), os meses anteriores mostram esses cofrinhos zerados.",
     "otherComponents": "Outros",
@@ -421,6 +437,18 @@
     "receiptsHelp": "Transferências que você recebeu no mês. Conte uma como reembolso quando ela devolve parte de um gasto, como a parte de um amigo num jantar: ela passa a abater a subcategoria que você escolher.",
     "countAsRefund": "Contar como reembolso",
     "notRefund": "Não é reembolso",
-    "decidedReceipts": "Recebimentos já decididos"
+    "decidedReceipts": "Recebimentos já decididos",
+    "boxSuggestions": "Pagamentos prováveis pelo cofrinho",
+    "boxSuggestionsHelp": "O banco não informa contas pagas direto pelo cofrinho: a evidência é o saldo do cofrinho cair sem resgate informado. Sugestões observadas são quedas vistas entre duas sincronizações, com o valor exato, identificadas por uma conta mensal compatível. Antes do primeiro saldo registrado só se conhece o total que saiu: as sugestões estimadas posicionam contas mensais que faltam num mês apenas se o cofrinho continua com dinheiro para todos os resgates seguintes. Aceite para registrar como lançamento manual pago por aquele cofrinho (ajuste o valor antes, se precisar) ou ignore.",
+    "boxYield": "O rendimento é descontado a cerca de {rate}% ao dia (120% do CDI), estimado de um cofrinho cujo saldo só cresceu.",
+    "boxGap": "{box}: {gap} saíram sem resgate informado ({observed} observados desde {since}); as sugestões abaixo cobrem {suggested}.",
+    "observedRange": "Pago entre {low} e {high} em outros meses",
+    "acceptSuggestion": "Aceitar",
+    "ignoreSuggestion": "Ignorar",
+    "observedDrop": "Observada",
+    "estimatedDrop": "Estimada",
+    "dropWindow": "saldo caiu entre {start} e {end}",
+    "estimatedHelp": "antes do primeiro saldo registrado",
+    "acceptSuggestionTitle": "Registrar pagamento pelo cofrinho"
   }
 }

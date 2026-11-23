@@ -14,6 +14,7 @@ type Entry = {
   start: string;
   end: string | null;
   cnpj: string;
+  savings_box: string;
 };
 
 async function send(
@@ -46,6 +47,7 @@ export function ManualExpenses({
   const [entries, setEntries] = useState<Entry[]>([]);
   const [editing, setEditing] = useState<Entry>();
   const [formOpen, setFormOpen] = useState(false);
+  const [boxes, setBoxes] = useState<{ item: string; name: string }[]>([]);
   const [formItem, setFormItem] = useState("");
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -58,7 +60,12 @@ export function ManualExpenses({
     void fetch("/api/spending/manual", { signal: request.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error();
-        setEntries(((await response.json()) as { entries: Entry[] }).entries);
+        const result = (await response.json()) as {
+          entries: Entry[];
+          boxes: { item: string; name: string }[];
+        };
+        setEntries(result.entries);
+        setBoxes(result.boxes);
       })
       .catch(() => {
         if (!request.signal.aborted) setStatus("manualError");
@@ -97,6 +104,7 @@ export function ManualExpenses({
       start: value("start"),
       end: recurring ? value("end") || null : value("start"),
       cnpj: value("cnpj").replace(/\D/g, ""),
+      savings_box: value("savings_box"),
     };
     const target = event.currentTarget;
     void change(async () => {
@@ -148,6 +156,8 @@ export function ManualExpenses({
                       <small>
                         {labels.get(entry.item) ?? copy.connection}
                         {entry.cnpj && ` · ${copy.cnpj} ${entry.cnpj}`}
+                        {entry.savings_box &&
+                          ` · ${copy.paidFromSavingsBox}: ${entry.savings_box}`}
                       </small>
                     </div>
                   </td>
@@ -260,6 +270,27 @@ export function ManualExpenses({
                   {connection.label}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            {copy.paidFromSavingsBox}
+            <select
+              name="savings_box"
+              defaultValue={editing?.savings_box ?? ""}
+              disabled={busy}
+            >
+              <option value="">{copy.notFromSavingsBox}</option>
+              {boxes
+                .filter(
+                  (box) =>
+                    box.item ===
+                    (formItem || editing?.item || connections[0]?.id),
+                )
+                .map((box) => (
+                  <option key={box.name} value={box.name}>
+                    {box.name}
+                  </option>
+                ))}
             </select>
           </label>
           <label>

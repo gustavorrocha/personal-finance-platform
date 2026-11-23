@@ -18,6 +18,7 @@ from .local_classifier import (
     ClassifierUnavailable,
     LocalClassifier,
 )
+from .savings_inference import suggest as suggest_box_payments
 
 router = APIRouter(prefix="/api/spending")
 ORIGINS = {"http://localhost:8080", "http://127.0.0.1:8080"}
@@ -78,6 +79,8 @@ class ManualExpense(BaseModel):
     start: Month
     end: Month | None = None
     cnpj: Annotated[str, StringConstraints(pattern=r"^(\d{14})?$")] = ""
+    # The savings box that paid it: each occurrence counts as a withdrawal from that box.
+    savings_box: Annotated[str, StringConstraints(strip_whitespace=True, max_length=512)] = ""
 
 
 class CategoryInput(BaseModel):
@@ -464,14 +467,21 @@ MANUAL_LIST = (
     "toString(amount) AS amount, currency, "
     f"if(category_id = toUUID('{ZERO_UUID}'), NULL, toString(category_id)) AS category, "
     "day_of_month AS day, formatDateTime(start_month, '%Y-%m') AS start, "
-    "if(end_month IS NULL, NULL, formatDateTime(end_month, '%Y-%m')) AS end, cnpj "
+    "if(end_month IS NULL, NULL, formatDateTime(end_month, '%Y-%m')) AS end, cnpj, "
+    "savings_box "
     "FROM analytics.manual_expenses ORDER BY description, start FORMAT JSONEachRow"
 )
 
 
 @router.get("/manual")
 async def list_manual_expenses():
-    return {"entries": await dashboard_query(MANUAL_LIST)}
+    return {
+        "entries": await dashboard_query(MANUAL_LIST),
+        "boxes": await dashboard_query(
+            "SELECT toString(item_key) AS item, name FROM analytics.savings_boxes "
+            "ORDER BY name FORMAT JSONEachRow"
+        ),
+    }
 
 
 async def write_manual(entry: UUID, expense: ManualExpense, archived: bool = False) -> None:
@@ -489,12 +499,20 @@ async def write_manual(entry: UUID, expense: ManualExpense, archived: bool = Fal
             raise HTTPException(404, "Connection has no reported expenses")
         if expense.category is not None:
             await active_category(expense.category)
+        if expense.savings_box and not await dashboard_query(
+            "SELECT name FROM analytics.savings_boxes WHERE item_key = {item:UUID} "
+            "AND name = {box:String} LIMIT 1 FORMAT JSONEachRow",
+            item=str(expense.item),
+            box=expense.savings_box,
+        ):
+            raise HTTPException(404, "Savings box is unavailable")
     await dashboard_query(
         "INSERT INTO core.manual_expenses (entry_id, item_key, description, amount, currency, "
-        "category_id, day_of_month, start_month, end_month, cnpj, archived) "
+        "category_id, day_of_month, start_month, end_month, cnpj, savings_box, archived) "
         "SELECT {entry:UUID}, {item:UUID}, {description:String}, {amount:Decimal(38, 12)}, "
         "{currency:String}, {category:UUID}, {day:UInt8}, {start:Date}, "
-        "if({end:String} = '', NULL, toDate({end:String})), {cnpj:String}, {archived:Bool}",
+        "if({end:String} = '', NULL, toDate({end:String})), {cnpj:String}, {box:String}, "
+        "{archived:Bool}",
         entry=str(entry),
         item=str(expense.item),
         description=expense.description,
@@ -505,6 +523,7 @@ async def write_manual(entry: UUID, expense: ManualExpense, archived: bool = Fal
         start=f"{expense.start}-01",
         end=f"{expense.end}-01" if expense.end else "",
         cnpj=expense.cnpj,
+        box=expense.savings_box,
         archived=str(archived).lower(),
     )
 
@@ -543,8 +562,77 @@ async def archive_manual_expense(entry: UUID) -> Response:
         start=row["start"],
         end=row["end"],
         cnpj=row["cnpj"],
+        savings_box=row["savings_box"],
     )
     await write_manual(entry, expense, archived=True)
+    return Response(status_code=204)
+
+
+class Dismissal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cnpj: Annotated[str, StringConstraints(pattern=r"^\d{14}$")]
+    month: Month
+
+
+@router.get("/savings-box-suggestions")
+async def savings_box_suggestions():
+    """Monthly bills that were likely paid straight from a savings box."""
+    boxes = await dashboard_query(
+        "SELECT toString(b.item_key) AS item, b.name AS name, toString(b.balance) AS balance, "
+        "toString(b.indexer_percentage) AS pct, toString(h.since) AS observed_since "
+        "FROM analytics.savings_boxes AS b LEFT JOIN (SELECT box_key, min(observed_on) AS since "
+        "FROM analytics.savings_box_history GROUP BY box_key) AS h ON b.box_key = h.box_key "
+        "WHERE b.item_key != {demo:UUID} FORMAT JSONEachRow",
+        demo=DEMO_ITEM,
+    )
+    outflows = await dashboard_query(
+        "SELECT toString(item_key) AS item, name AS box, toString(previous_day) AS start, "
+        "toString(economic_date) AS end, toString(amount) AS amount, "
+        "toString(previous_balance) AS previous_balance "
+        "FROM analytics.savings_box_outflows WHERE item_key != {demo:UUID} FORMAT JSONEachRow",
+        demo=DEMO_ITEM,
+    )
+    flows = await dashboard_query(
+        "SELECT toString(item_key) AS item, lower(savings_box) AS box, "
+        "toString(economic_date) AS date, kind, toString(amount) AS amount "
+        "FROM analytics.investment_flows WHERE savings_box != '' "
+        "AND kind IN ('contribution', 'withdrawal') AND item_key != {demo:UUID} "
+        "FORMAT JSONEachRow",
+        demo=DEMO_ITEM,
+    )
+    payments = await dashboard_query(
+        "SELECT toString(item_key) AS item, toString(economic_date) AS date, "
+        "toString(net_amount) AS amount, cnpj, "
+        "if(business_name != '', business_name, merchant_label) AS payee, category_id, "
+        "if(subcategory != '', concat(category, ' › ', subcategory), category) AS category "
+        "FROM analytics.spending_dashboard WHERE included AND net_amount > 0 AND cnpj != '' "
+        "AND item_key != {demo:UUID} FORMAT JSONEachRow",
+        demo=DEMO_ITEM,
+    )
+    dismissed = await dashboard_query(
+        "SELECT cnpj, month FROM analytics.inferred_payment_dismissals FORMAT JSONEachRow"
+    )
+    return suggest_box_payments(
+        boxes,
+        flows,
+        payments,
+        {(row["cnpj"], row["month"]) for row in dismissed},
+        date.today(),
+        outflows,
+    )
+
+
+@router.post(
+    "/savings-box-suggestions/dismiss", status_code=204, dependencies=[Depends(same_origin)]
+)
+async def dismiss_box_payment(dismissal: Dismissal) -> Response:
+    await dashboard_query(
+        "INSERT INTO core.inferred_payment_dismissals (cnpj, month) "
+        "SELECT {cnpj:String}, {month:Date}",
+        cnpj=dismissal.cnpj,
+        month=f"{dismissal.month}-01",
+    )
     return Response(status_code=204)
 
 
