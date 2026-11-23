@@ -199,6 +199,8 @@
   "changeCategory": "Change category",
   "sameMerchant": "Expenses from this merchant",
   "sameCategory": "This month in this category",
+  "paidFromSavingsBox": "Paid from savings box",
+  "notFromSavingsBox": "Not from a savings box",
   "investedGapsTitle": "Money left without a reported withdrawal.",
   "investedGapsHelp": "These savings boxes received more than they hold and returned: the rest paid bills straight from the box, which the bank does not report. Until each payment is registered (as a manual entry paid from the box), earlier months show these boxes at zero.",
   "otherComponents": "Other",
@@ -208,5 +210,17 @@
   "receiptsHelp": "Transfers you received this month. Count one as a refund when it pays back part of an expense, such as a friend's share of a dinner: it then reduces the subcategory you choose.",
   "countAsRefund": "Count as refund",
   "notRefund": "Not a refund",
-  "decidedReceipts": "Decided transfers"
+  "decidedReceipts": "Decided transfers",
+  "boxSuggestions": "Likely paid from a savings box",
+  "boxSuggestionsHelp": "The bank does not report bills paid straight from a savings box: the evidence is the box balance falling without a reported withdrawal. Observed suggestions are drops seen between two syncs, with their exact amount, named by a monthly bill that fits. Before the first stored balance only the total that left is known: estimated suggestions place monthly bills that are missing from a month only while the box keeps enough money for every later withdrawal. Accept one to record it as a manual entry paid from that box (adjust the amount first if needed), or ignore it.",
+  "boxYield": "Yield is discounted at about {rate}% a day (120% CDI), estimated from a box whose balance only grew.",
+  "boxGap": "{box}: {gap} left without a reported withdrawal ({observed} observed since {since}); suggestions below cover {suggested}.",
+  "observedRange": "Paid between {low} and {high} in other months",
+  "acceptSuggestion": "Accept",
+  "ignoreSuggestion": "Ignore",
+  "observedDrop": "Observed",
+  "estimatedDrop": "Estimated",
+  "dropWindow": "balance fell between {start} and {end}",
+  "estimatedHelp": "before the first stored balance",
+  "acceptSuggestionTitle": "Record payment from savings box"
 }

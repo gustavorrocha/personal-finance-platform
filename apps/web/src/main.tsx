@@ -10,6 +10,7 @@ import {
   type RuleScope,
 } from "./expense-dialog";
 import { ManualExpenses } from "./manual-expenses";
+import { SavingsBoxSuggestions } from "./savings-suggestions";
 import { Menu, Toast } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
@@ -758,6 +759,14 @@ function App() {
               </details>
             )}
           </section>
+        )}
+        {ready && data?.selected && (
+          <SavingsBoxSuggestions
+            locale={locale}
+            revision={revision}
+            categories={categories}
+            onChange={() => setRevision((value) => value + 1)}
+          />
         )}
         {ready &&
           data?.selected &&

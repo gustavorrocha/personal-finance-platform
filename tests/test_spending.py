@@ -884,6 +884,28 @@ def test_savings_box_outflows_and_recurring_entries_fill_unreported_spending(
         assert manual_months() == []
         assert client.get("/api/spending/manual").json()["entries"] == []
 
+        # A bill registered as paid from the box explains the drop: no outflow remains.
+        paid = {
+            **entry,
+            "description": "Conta paga pelo cofrinho",
+            "amount": "500",
+            "day": 11,
+            "start": "2024-11",
+            "end": "2024-11",
+            "cnpj": "",
+            "savings_box": "Gastos",
+        }
+        assert (
+            client.post(
+                "/api/spending/manual", headers=local, json={**paid, "savings_box": "Nope"}
+            ).status_code
+            == 404
+        )
+        assert client.post("/api/spending/manual", headers=local, json=paid).status_code == 201
+        report = client.get("/api/spending", params={"item": str(item), "month": "2024-11"}).json()
+        assert not [row for row in report["reviews"] if row["operation"] == "SAVINGS_BOX"]
+        assert "Conta paga pelo cofrinho" in {row["merchant"] for row in report["expenses"]}
+
 
 def test_invested_history_subtracts_later_flows_per_component(monkeypatch):
     class Today(date):

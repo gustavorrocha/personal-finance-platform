@@ -781,3 +781,19 @@ th:nth-child(3) {
 .notice ul {
   margin: 0.25rem 0;
 }
+
+.badge {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.badge.observed {
+  background: #d9efe4;
+  color: #0a6849;
+}
+.badge.estimated {
+  background: #fdf0d3;
+  color: #7a5200;
+}

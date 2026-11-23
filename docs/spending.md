@@ -71,10 +71,37 @@ such as a boleto paid with the money in a box; only the box balance drops.
   a box counts once. Do not also include a box outflow for a bill that a manual
   entry already covers.
 
+A manual entry can name the savings box that paid it (**Paid from savings
+box**). Each occurrence then counts as a withdrawal from that box, so the
+outflow is not reported again and the box's past balances are estimated
+correctly.
+
 **Transfers received** lists the month's PIX, TED and DOC credits from other
 people (not between own accounts, not income or investments). **Count as
 refund** subtracts one from spending, such as a friend's share of a dinner, and
 asks for its subcategory; **Not a refund** hides it among the decided ones.
+
+**Likely paid from a savings box** turns money that left a box into suggested
+payments. The evidence is always a box balance falling without a reported
+withdrawal:
+
+- **Observed:** since the box's first stored balance, each drop between two
+  syncs is the previous balance plus reported contributions, minus reported
+  withdrawals, plus the yield expected over those days, minus the new balance.
+  Providers report only the current balance, so one sync a day gives a one-day
+  window. It is suggested when a
+  monthly bill (same CNPJ, stable amount) fits that amount (within 10% of its
+  observed range) and its usual day falls between the syncs; other drops stay in
+  **Debit review**.
+- **Estimated:** before the first stored balance only the total that left is
+  known (yield removed, at the rate implied by a box whose balance only grew).
+  A monthly bill missing from a month inside the period in which it was paid is
+  suggested only if the box keeps enough money, with yield, for every later
+  reported withdrawal and suggested payment, and only up to that total.
+
+**Accept** opens the prefilled payment (description, amount, date, category,
+box, CNPJ) for editing and records it as a manual entry paid from the box;
+**Ignore** stores the decision in `core.inferred_payment_dismissals`.
 
 Manual entries are append-only events in `core.manual_expenses`. Outflows are
 computed by `analytics.savings_box_outflows`.
