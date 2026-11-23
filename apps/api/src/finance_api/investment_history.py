@@ -82,17 +82,39 @@ def asset_key(position: dict) -> str | None:
     return None
 
 
-def price_yield(prices: dict[date, Decimal]):
-    """Fraction gained from a day to the next one, at the last price on or before each."""
+def coupon_days(position: dict) -> set[date]:
+    """Payment dates of a Tesouro bond with semiannual interest: the due date's day, in
+    its month and six months apart."""
+    due = position.get("due_date")
+    if "Juros Semestrais" not in (position.get("name") or "") or not due:
+        return set()
+    due = date.fromisoformat(due)
+    return {
+        date(year, month, due.day)
+        for year in range(due.year - 40, due.year + 1)
+        for month in {due.month, (due.month + 5) % 12 + 1}
+    }
+
+
+def price_yield(prices: dict[date, Decimal], coupons: set[date] = frozenset()):
+    """Fraction gained from a day to the next one, at the last price on or before each.
+
+    A step across a coupon payment counts as zero: the price drops by the coupon, which is
+    paid out to the account rather than lost.
+    """
     days = sorted(prices)
 
-    def price(day: date) -> Decimal | None:
+    def quote(day: date) -> tuple[date, Decimal] | None:
         index = bisect_right(days, day)
-        return prices[days[index - 1]] if index else None
+        return (days[index - 1], prices[days[index - 1]]) if index else None
 
     def grow(day: date) -> Decimal:
-        today, following = price(day), price(day + DAY)
-        return following / today - 1 if today and following else Decimal(0)
+        today, following = quote(day), quote(day + DAY)
+        if not today or not following or today[0] == following[0]:
+            return Decimal(0)
+        if any(today[0] < coupon <= following[0] for coupon in coupons):
+            return Decimal(0)
+        return following[1] / today[1] - 1
 
     return grow
 
@@ -101,10 +123,13 @@ def daily_yield(
     position: dict,
     rates: dict[str, dict[date, Decimal]],
     prices: dict[date, Decimal] | None = None,
+    income: bool = False,
 ):
-    """Function of a day returning the fraction the position earns over that day."""
+    """Function of a day returning the fraction the position earns over that day; None
+    when the position follows neither a rate nor a market price. With `income`, coupons
+    paid out count as earned (for returns); without, the value drops by them."""
     if prices:
-        return price_yield(prices)
+        return price_yield(prices, coupon_days(position) if income else frozenset())
     indexer = (position.get("indexer") or "").upper()
     cdi = rates.get("CDI", {})
     last = max(cdi, default=None)
@@ -131,7 +156,7 @@ def daily_yield(
     ):
         step = Decimal((1 + float(fixed) / 100) ** (1 / 252) - 1)
         return lambda day: step if business(day) else Decimal(0)
-    return lambda day: Decimal(0)
+    return None
 
 
 def daily_values(
@@ -147,7 +172,7 @@ def daily_values(
     negative here (unreported withdrawals); callers clamp them.
     """
     latest = rows[-1]
-    grow = daily_yield(latest, rates, prices)
+    grow = daily_yield(latest, rates, prices) or (lambda day: Decimal(0))
     box = latest["type"] == "SAVINGS_BOX"
     # Investment balances arrive with the previous day's close; savings boxes are live.
     lag = timedelta(0) if box else DAY
@@ -189,6 +214,26 @@ def daily_values(
     return values, lowest
 
 
+def prepare(history, flows, classes, rates, prices):
+    """Rates per series, prices per asset, class names, snapshots and flows per position."""
+    series: dict[str, dict[date, Decimal]] = {}
+    for row in rates or []:
+        series.setdefault(row["series"], {})[date.fromisoformat(row["day"])] = Decimal(row["value"])
+    quotes: dict[str, dict[date, Decimal]] = {}
+    for row in prices or []:
+        quotes.setdefault(row["asset"], {})[date.fromisoformat(row["day"])] = Decimal(row["price"])
+    names = {row["id"]: row["name"] for row in classes}
+    snapshots: dict[str, list[dict]] = {}
+    for row in sorted(history, key=lambda row: row["observed_on"]):
+        snapshots.setdefault(row["position"], []).append(row)
+    moves: dict[str, list[tuple[date, Decimal]]] = {}
+    for row in flows:
+        moves.setdefault(row["position"], []).append(
+            (date.fromisoformat(row["date"]), Decimal(row["net"] or 0))
+        )
+    return series, quotes, names, snapshots, moves
+
+
 def invested_history(
     history: list[dict],
     flows: list[dict],
@@ -216,21 +261,7 @@ def invested_history(
     ]
     months = [slot for slot in months if slot <= today.strftime("%Y-%m")]
     start = date.fromisoformat(f"{months[0]}-01") - DAY
-    series: dict[str, dict[date, Decimal]] = {}
-    for row in rates or []:
-        series.setdefault(row["series"], {})[date.fromisoformat(row["day"])] = Decimal(row["value"])
-    quotes: dict[str, dict[date, Decimal]] = {}
-    for row in prices or []:
-        quotes.setdefault(row["asset"], {})[date.fromisoformat(row["day"])] = Decimal(row["price"])
-    names = {row["id"]: row["name"] for row in classes}
-    snapshots: dict[str, list[dict]] = {}
-    for row in sorted(history, key=lambda row: row["observed_on"]):
-        snapshots.setdefault(row["position"], []).append(row)
-    moves: dict[str, list[tuple[date, Decimal]]] = {}
-    for row in flows:
-        moves.setdefault(row["position"], []).append(
-            (date.fromisoformat(row["date"]), Decimal(row["net"] or 0))
-        )
+    series, quotes, names, snapshots, moves = prepare(history, flows, classes, rates, prices)
     totals: dict[tuple[str, str, str], Decimal] = {}
     gaps = []
     for position, rows in snapshots.items():
@@ -266,3 +297,148 @@ def invested_history(
         if (currency, key) in present
     ]
     return rows, gaps
+
+
+PERIODS = ("month", "3m", "6m", "12m", "ytd")
+CENTS = Decimal("0.01")
+
+
+def months_before(day: date, count: int) -> date:
+    index = day.year * 12 + day.month - 1 - count
+    year, month = index // 12, index % 12 + 1
+    last = (date(year + month // 12, month % 12 + 1, 1) - DAY).day
+    return date(year, month, min(day.day, last))
+
+
+def invested_returns(
+    history: list[dict],
+    flows: list[dict],
+    assigned: dict[str, str],
+    classes: list[dict],
+    rates: list[dict] | None = None,
+    prices: list[dict] | None = None,
+) -> dict:
+    """Time-weighted returns, gross of income tax, of the portfolio, each class and each
+    held position (BRL), up to yesterday, against the CDI.
+
+    A position's daily return is its model's (rate curve or market price), so purchases,
+    sales and payments made straight from a savings box are not gains or losses; a group's
+    is the average of its positions weighted by the previous day's value. Positions without
+    a model are left out and listed as uncovered.
+    """
+    end = date.today() - DAY
+    bases = {
+        "month": date(end.year, end.month, 1) - DAY,
+        "3m": months_before(end, 3),
+        "6m": months_before(end, 6),
+        "12m": months_before(end, 12),
+        "ytd": date(end.year, 1, 1) - DAY,
+    }
+    start = min(bases.values())
+    days = [start + DAY * offset for offset in range((end - start).days + 1)]
+    series, quotes, names, snapshots, moves = prepare(history, flows, classes, rates, prices)
+    active = set(names)
+    weight: dict[str, list[Decimal]] = {}
+    earned: dict[str, list[Decimal]] = {}
+    held: dict[str, Decimal] = {}
+    members: dict[str, list[dict]] = {}
+    uncovered = []
+    for position, rows in snapshots.items():
+        latest = rows[-1]
+        if latest["currency"] != "BRL":
+            continue
+        own_prices = quotes.get(asset_key(latest) or "")
+        grow = daily_yield(latest, series, own_prices, income=True)
+        values, _ = daily_values(rows, moves.get(position, []), start, series, own_prices)
+        value = max(Decimal(0), values.get(end, Decimal(0)))
+        name = latest["name"] or latest.get("symbol") or ""
+        if grow is None:
+            if value:
+                uncovered.append({"name": name, "value": str(value.quantize(CENTS))})
+            continue
+        key = position_class(latest, assigned, active)
+        for group in ("", key):
+            held[group] = held.get(group, Decimal(0)) + value
+        for offset, day in enumerate(days[1:], start=1):
+            previous = max(Decimal(0), values.get(day - DAY, Decimal(0)))
+            if previous:
+                gain = previous * grow(day - DAY)
+                for group in ("", f"class:{key}", position):
+                    weight.setdefault(group, [Decimal(0)] * len(days))[offset] += previous
+                    earned.setdefault(group, [Decimal(0)] * len(days))[offset] += gain
+        members.setdefault(key, [])
+        if value:
+            members[key].append({"key": position, "name": name, "value": value})
+
+    def levels(group: str | None, daily) -> list[Decimal]:
+        level, result = Decimal(1), [Decimal(1)]
+        for offset in range(1, len(days)):
+            level *= 1 + daily(offset)
+            result.append(level)
+        return result
+
+    def group_levels(group: str) -> list[Decimal]:
+        def daily(offset: int) -> Decimal:
+            total = weight.get(group, [Decimal(0)] * len(days))[offset]
+            return earned[group][offset] / total if total else Decimal(0)
+
+        return levels(group, daily)
+
+    def period_returns(path: list[Decimal], group: str | None) -> dict:
+        result = {}
+        for period, base in bases.items():
+            first = days.index(base)
+            covered = group is None or any(weight.get(group, [])[first + 1 :])
+            result[period] = f"{path[-1] / path[first] - 1:.6f}" if covered else None
+        return result
+
+    cdi_yield = daily_yield({"indexer": "CDI", "rate": "100"}, series)
+    cdi = levels(None, lambda offset: cdi_yield(days[offset] - DAY))
+    portfolio = group_levels("")
+    output = []
+    if "" in weight:
+        output.append(
+            {
+                "kind": "portfolio",
+                "key": "",
+                "name": "",
+                "value": str(held.get("", Decimal(0)).quantize(CENTS)),
+                "returns": period_returns(portfolio, ""),
+            }
+        )
+    for key in sorted(members, key=lambda key: (not key, names.get(key, ""))):
+        output.append(
+            {
+                "kind": "class",
+                "key": key,
+                "name": names.get(key, ""),
+                "value": str(held.get(key, Decimal(0)).quantize(CENTS)),
+                "returns": period_returns(group_levels(f"class:{key}"), f"class:{key}"),
+            }
+        )
+        for member in sorted(members[key], key=lambda member: -member["value"]):
+            output.append(
+                {
+                    "kind": "position",
+                    "key": member["key"],
+                    "name": member["name"],
+                    "value": str(member["value"].quantize(CENTS)),
+                    "returns": period_returns(group_levels(member["key"]), member["key"]),
+                }
+            )
+    first = days.index(bases["12m"])
+    return {
+        "end": str(end),
+        "rows": output,
+        "cdi": period_returns(cdi, None),
+        "uncovered": uncovered,
+        "series": [
+            {
+                "day": str(day),
+                "portfolio": f"{portfolio[offset] / portfolio[first] - 1:.6f}",
+                "cdi": f"{cdi[offset] / cdi[first] - 1:.6f}",
+            }
+            for offset, day in enumerate(days)
+            if offset >= first
+        ],
+    }

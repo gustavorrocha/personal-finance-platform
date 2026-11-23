@@ -797,3 +797,88 @@ th:nth-child(3) {
   background: #fdf0d3;
   color: #7a5200;
 }
+
+/* Investment returns: portfolio (series 1) against the CDI (neutral, dashed). */
+.swatch.benchmark {
+  background: #7a8b83;
+}
+.returns-plot {
+  position: relative;
+}
+.returns-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+}
+.returns-portfolio,
+.returns-cdi {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.returns-portfolio {
+  stroke: #2a78d6;
+}
+.returns-cdi {
+  stroke: #7a8b83;
+  stroke-dasharray: 5 4;
+}
+.returns-zero,
+.returns-cursor {
+  stroke: #cddccd;
+  stroke-width: 1;
+}
+.returns-portfolio-dot,
+.returns-cdi-dot {
+  stroke: #fff;
+  stroke-width: 2;
+}
+.returns-portfolio-dot {
+  fill: #2a78d6;
+}
+.returns-cdi-dot {
+  fill: #7a8b83;
+}
+.returns-label,
+.returns-axis {
+  font-size: 12px;
+  fill: #42594f;
+  dominant-baseline: middle;
+  font-variant-numeric: tabular-nums;
+}
+.returns-tooltip {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  min-width: 11rem;
+  padding: 0.6rem 0.75rem;
+  transform: translateX(-50%);
+  border: 1px solid #d4ded4;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(21 45 37 / 12%);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.returns-tooltip > * {
+  display: block;
+}
+.returns-table td small {
+  display: block;
+  color: #42594f;
+}
+.returns-portfolio th,
+.returns-portfolio td,
+.returns-class th {
+  font-weight: 600;
+}
+.returns-position th {
+  padding-left: 1.5rem;
+  font-weight: 400;
+}
+.returns-benchmark th,
+.returns-benchmark td {
+  color: #42594f;
+}

@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from .investment_history import asset_key, invested_history
+from .investment_history import asset_key, invested_history, invested_returns
 from .local_classifier import (
     BATCH_LIMIT,
     MODEL_TIMEOUT,
@@ -287,24 +287,25 @@ async def spending(
         **filters,
     )
     classes = await dashboard_query(INVESTMENT_CLASS_LIST)
-    assigned = await dashboard_query(INVESTMENT_ASSIGNMENTS)
+    assigned = {
+        row["position"]: row["class"] for row in await dashboard_query(INVESTMENT_ASSIGNMENTS)
+    }
+    rates = await dashboard_query(
+        "SELECT series, toString(day) AS day, toString(value) AS value FROM "
+        "(SELECT * FROM analytics.market_rates WHERE series IN ('CDI', 'SELIC') "
+        "AND day >= today() - 800) FORMAT JSONEachRow"
+    )
+    prices = await dashboard_query(
+        "SELECT asset, toString(day) AS day, toString(price) AS price FROM "
+        "(SELECT * FROM analytics.market_prices WHERE asset IN {assets:Array(String)} "
+        "AND day >= today() - 800) FORMAT JSONEachRow",
+        assets=clickhouse_array({asset_key(row) for row in positions} - {None}),
+    )
     result["invested_history"], result["invested_gaps"] = invested_history(
-        positions,
-        flows,
-        {row["position"]: row["class"] for row in assigned},
-        classes,
-        result["chart_month"],
-        await dashboard_query(
-            "SELECT series, toString(day) AS day, toString(value) AS value FROM "
-            "(SELECT * FROM analytics.market_rates WHERE series IN ('CDI', 'SELIC') "
-            "AND day >= today() - 800) FORMAT JSONEachRow"
-        ),
-        await dashboard_query(
-            "SELECT asset, toString(day) AS day, toString(price) AS price FROM "
-            "(SELECT * FROM analytics.market_prices WHERE asset IN {assets:Array(String)} "
-            "AND day >= today() - 800) FORMAT JSONEachRow",
-            assets=clickhouse_array({asset_key(row) for row in positions} - {None}),
-        ),
+        positions, flows, assigned, classes, result["chart_month"], rates, prices
+    )
+    result["invested_returns"] = invested_returns(
+        positions, flows, assigned, classes, rates, prices
     )
     search = search.strip()
     expense_filters = dict(filters, offset=str((page - 1) * EXPENSE_PAGE_SIZE))

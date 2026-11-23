@@ -190,6 +190,18 @@ box; the chart warns about it and draws it at zero where the estimate would be
 negative, until those payments are registered as manual entries paid from the
 box.
 
+**Investment returns** shows time-weighted returns, gross of income tax, of
+the portfolio, each class and each held position (BRL) for the month, 3, 6 and
+12 months and the year, up to yesterday, next to the CDI and a 12-month
+cumulative chart. A position's daily return comes from its model (its rate
+curve or public price), not from changes in its balance, so contributions,
+withdrawals and payments made straight from a savings box are neither gains
+nor losses; a Tesouro coupon payment counts as earned instead of as the price
+drop it causes. A class or the portfolio averages its positions weighted by the
+previous day's value. Positions without a rate or public price are left out and
+listed below the table. A position held for less than a period shows its return
+since it was bought.
+
 `finance market-sync` downloads the last ten years of the public CDI, Selic and
 IPCA series from the Banco Central (SGS) into `core.market_rates`, and of every
 Tesouro Direto bond's prices from the Tesouro Transparente into
