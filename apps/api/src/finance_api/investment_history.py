@@ -1,10 +1,18 @@
-"""Invested money per investment class over time, from the daily balances on record.
+"""Invested money per investment class over time, valued day by day.
 
 Each position (savings boxes included) has a class: the one the operator chose, or else an
-automatic one from its type and indexer. A month uses the last balance stored in it; months
-before the first stored balance walk back from the next one, subtracting the purchases and
-adding back the sales reported in between. Past yield and market changes are not
-reconstructed for those months.
+automatic one from its type and indexer. A day with a stored balance uses it, gross of the
+income tax and IOF withheld on redemption; investment balances count for the day before
+they were observed, as providers report the previous close. Other days walk from the
+nearest stored balance through the purchases and sales reported in between and, for
+positions that follow a curve, the daily yield of that curve:
+
+- CDI and Selic: the Banco Central daily rate times the contracted percentage, on business
+  days (savings boxes included);
+- fixed rate (CDB, LCA, LCI, not Treasury): (1 + annual rate) ** (1 / 252) per business day.
+
+Other positions (Treasury marked to market, inflation-linked, funds, equities) walk back
+through reported flows only, so those days show money put in rather than market value.
 """
 
 from datetime import date, timedelta
@@ -15,6 +23,8 @@ CDI = "443ce26b-6361-545f-9c5c-f7482f64d806"
 PREFIXED = "389552c8-5aaf-5acb-896a-29675e75711e"
 FUNDS = "f79ee425-a7d3-5738-8f2b-f247971ca8e5"
 ETF_STOCKS = "9c05e606-3497-536c-9480-5b3caa66d5ce"
+
+DAY = timedelta(days=1)
 
 
 def automatic_class(position: dict) -> str | None:
@@ -45,7 +55,93 @@ def position_class(position: dict, assigned: dict[str, str], active: set[str]) -
 def month_end(slot: str, today: date) -> date:
     year, month = map(int, slot.split("-"))
     following = date(year + month // 12, month % 12 + 1, 1)
-    return min(following - timedelta(days=1), today)
+    return min(following - DAY, today)
+
+
+def number(value) -> Decimal | None:
+    return Decimal(value) if value not in (None, "") else None
+
+
+def daily_yield(position: dict, rates: dict[str, dict[date, Decimal]]):
+    """Function of a day returning the fraction the position earns over that day."""
+    indexer = (position.get("indexer") or "").upper()
+    cdi = rates.get("CDI", {})
+    last = max(cdi, default=None)
+
+    def business(day: date) -> bool:
+        # Banco Central publishes rates on business days only; later days are weekdays.
+        return day in cdi if last and day <= last else day.weekday() < 5
+
+    if indexer in {"CDI", "SELIC"}:
+        series = rates.get(indexer, {})
+        newest = series[max(series)] if series else Decimal(0)
+        share = number(position.get("rate")) or Decimal(100)
+        return lambda day: (
+            series.get(day, newest if day > max(series, default=day) else 0) * share / 10000
+            if business(day)
+            else Decimal(0)
+        )
+    fixed = number(position.get("fixed_rate"))
+    if (
+        not indexer
+        and fixed
+        and position.get("type") == "FIXED_INCOME"
+        and position.get("subtype") != "TREASURY"
+    ):
+        step = Decimal((1 + float(fixed) / 100) ** (1 / 252) - 1)
+        return lambda day: step if business(day) else Decimal(0)
+    return lambda day: Decimal(0)
+
+
+def daily_values(
+    rows: list[dict], own: list[tuple[date, Decimal]], start: date, rates: dict
+) -> tuple[dict[date, Decimal], Decimal]:
+    """Value of one position at the end of each day from `start`, and its lowest walk.
+
+    V(d) = V(d - 1) * (1 + yield(d - 1)) + flow(d); walking back inverts it. Values may be
+    negative here (unreported withdrawals); callers clamp them.
+    """
+    latest = rows[-1]
+    grow = daily_yield(latest, rates)
+    box = latest["type"] == "SAVINGS_BOX"
+    # Investment balances arrive with the previous day's close; savings boxes are live.
+    lag = timedelta(0) if box else DAY
+    anchors = {
+        date.fromisoformat(row["observed_on"]) - lag: Decimal(row.get("gross") or row["balance"])
+        for row in rows
+    }
+    flow: dict[date, Decimal] = {}
+    for day, net in own:
+        flow[day] = flow.get(day, Decimal(0)) + net
+    first, last = min(anchors), max(anchors)
+    opened = min(flow, default=first)
+    purchased = date.fromisoformat(latest["purchase_date"]) if latest.get("purchase_date") else None
+    # A box starts empty: walk back to the day before its first movement to see whether
+    # more went in than it holds and returned.
+    floor = min(start, opened - DAY) if box else start
+    values: dict[date, Decimal] = {}
+    value = anchors[last]
+    day = last
+    while day >= floor:
+        if day in anchors:
+            value = anchors[day]
+        values[day] = value
+        value = (value - flow.get(day, Decimal(0))) / (1 + grow(day - DAY))
+        day -= DAY
+    lowest = min((v for d, v in values.items() if d >= start or d == opened - DAY), default=0)
+    lowest = min(lowest, Decimal(0))
+    # Forward through the month of the last stored balance; later the position is gone.
+    following = date(last.year + last.month // 12, last.month % 12 + 1, 1)
+    value = anchors[last]
+    day = last + DAY
+    while day < following:
+        value = value * (1 + grow(day - DAY)) + flow.get(day, Decimal(0))
+        values[day] = value
+        day += DAY
+    for day in values:
+        if (purchased and day < purchased) or (box and day < opened) or day >= following:
+            values[day] = Decimal(0)
+    return values, lowest
 
 
 def invested_history(
@@ -54,9 +150,12 @@ def invested_history(
     assigned: dict[str, str],
     classes: list[dict],
     month: str,
+    rates: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """history: position, observed_on, type, indexer, name, currency, balance (one per day).
+    """history: position, observed_on, type, subtype, indexer, rate, fixed_rate,
+    purchase_date, name, currency, balance and gross (one per day).
     flows: position, date, net (purchases and contributions positive).
+    rates: series (CDI, SELIC), day, value (daily percentage).
     Returns rows (month, currency, key = class id or "", name, total) for the 12 months up
     to `month`, and gaps: positions whose walk back fell below zero, such as a savings box
     that paid a bill without a reported withdrawal.
@@ -69,6 +168,10 @@ def invested_history(
         for offset in range(11, -1, -1)
     ]
     months = [slot for slot in months if slot <= today.strftime("%Y-%m")]
+    start = date.fromisoformat(f"{months[0]}-01") - DAY
+    series: dict[str, dict[date, Decimal]] = {}
+    for row in rates or []:
+        series.setdefault(row["series"], {})[date.fromisoformat(row["day"])] = Decimal(row["value"])
     names = {row["id"]: row["name"] for row in classes}
     snapshots: dict[str, list[dict]] = {}
     for row in sorted(history, key=lambda row: row["observed_on"]):
@@ -83,33 +186,10 @@ def invested_history(
     for position, rows in snapshots.items():
         latest = rows[-1]
         key = position_class(latest, assigned, set(names))
-        own = moves.get(position, [])
-        opened = min((day for day, _ in own), default=date.fromisoformat(rows[0]["observed_on"]))
-        lowest = Decimal(0)
-        if latest["type"] == "SAVINGS_BOX":
-            # A box starts empty: what went in beyond its first stored balance left it
-            # without a reported withdrawal.
-            since = date.fromisoformat(rows[0]["observed_on"])
-            before = sum((net for day, net in own if day <= since), Decimal(0))
-            lowest = min(lowest, Decimal(rows[0]["balance"]) - before)
+        values, lowest = daily_values(rows, moves.get(position, []), start, series)
         for slot in months:
             end = month_end(slot, today)
-            inside = [row for row in rows if row["observed_on"][:7] == slot]
-            later = [row for row in rows if date.fromisoformat(row["observed_on"]) > end]
-            if inside and date.fromisoformat(inside[-1]["observed_on"]) <= end:
-                value = Decimal(inside[-1]["balance"])
-            elif later:
-                anchor = later[0]
-                until = date.fromisoformat(anchor["observed_on"])
-                value = Decimal(anchor["balance"]) - sum(
-                    (net for day, net in own if end < day <= until), Decimal(0)
-                )
-                # A savings box holds nothing before its first reported movement.
-                if latest["type"] == "SAVINGS_BOX" and end < opened:
-                    value = Decimal(0)
-            else:
-                # No longer reported: sold or closed.
-                value = Decimal(0)
+            value = values.get(end, Decimal(0))
             lowest = min(lowest, value)
             group = (slot, latest["currency"], key)
             totals[group] = totals.get(group, Decimal(0)) + max(Decimal(0), value)
@@ -118,7 +198,7 @@ def invested_history(
                 {
                     "name": latest["name"] or "",
                     "currency": latest["currency"],
-                    "amount": str(-lowest),
+                    "amount": str(-lowest.quantize(Decimal("0.01"))),
                 }
             )
     present = {(currency, key) for (_, currency, key), total in totals.items() if total}
@@ -128,7 +208,7 @@ def invested_history(
             "currency": currency,
             "key": key,
             "name": names.get(key, ""),
-            "total": str(total),
+            "total": str(total.quantize(Decimal("0.01"))),
         }
         for (slot, currency, key), total in sorted(totals.items())
         if (currency, key) in present

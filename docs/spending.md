@@ -167,16 +167,27 @@ in it. **Recent expenses** shows the latest 10; **Show more** opens the full,
 searchable list.
 
 **Invested wealth over time** stacks, for each of the last 12 months, the
-invested money of each investment class. Providers report only current
-balances, so each sync stores the balance of every position and savings box of
-that day. A month with stored balances uses its last one. Earlier months start
-from the next stored balance, minus the purchases and plus the sales reported
-for each position (contributions and withdrawals for a savings box) in between,
-so they show money put in rather than past yield and market value. A position
-that received more than it holds and returned lost the rest without a reported
-withdrawal, such as a bill paid straight from a savings box; the chart warns
-about it and draws it at zero where the estimate would be negative, until those
-payments are registered as manual entries paid from the box.
+invested money of each investment class, valued day by day. Providers report
+only current balances, so each sync stores the balance of every position and
+savings box of that day, gross of the income tax and IOF withheld on redemption.
+Investment balances count for the day before they were observed, as providers
+report the previous close. Other days walk from the nearest stored balance
+through the purchases and sales reported for each position (contributions and
+withdrawals for a savings box) and, for positions that follow a curve, its daily
+yield on business days: the CDI or Selic times the contracted percentage
+(savings boxes included), or the contracted fixed rate over 252 business days
+for CDBs, LCAs and LCIs. Treasury bonds, inflation-linked positions, funds and
+equities have no curve yet, so their earlier days show money put in rather than
+market value. A position that received more than it holds and returned lost the
+rest without a reported withdrawal, such as a bill paid straight from a savings
+box; the chart warns about it and draws it at zero where the estimate would be
+negative, until those payments are registered as manual entries paid from the
+box.
+
+`finance market-sync` downloads the last ten years of the public CDI, Selic and
+IPCA series from the Banco Central (SGS) into `core.market_rates`. It downloads
+whole series, never anything tied to a holding. Run it after a sync; days
+without a published rate yet reuse the latest one.
 
 **Investment classes** (on the **Categories** page) start as Renda fixa -
 Inflação, Renda fixa - CDI, Renda fixa - Pré, Cotas de fundos, ETF renda fixa
