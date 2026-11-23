@@ -1,7 +1,8 @@
 """Public daily rates (Banco Central) and prices (Tesouro Direto, CVM funds, B3 quotes).
 
-Whole series are downloaded, never anything tied to a holding, so the source learns nothing
-about the portfolio.
+Whole series are downloaded, never anything tied to a holding, so those sources learn nothing
+about the portfolio. The one exception: a held ticker missing from B3's historical files is
+asked for by name from Yahoo Finance, which then sees that ticker.
 """
 
 import hashlib
@@ -9,10 +10,13 @@ import io
 import json
 import re
 import zipfile
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 import httpx
+
+from .collection import item_key
+from .spending_demo import DEMO_SOURCE
 
 # SGS codes: CDI and Selic as daily percentages, IPCA as a monthly percentage.
 SERIES = {"CDI": 12, "SELIC": 11, "IPCA": 433}
@@ -115,6 +119,7 @@ def sync_market(sql, http: httpx.Client, today: date | None = None) -> dict:
     counts["TESOURO"] = len(rows)
     counts["CVM"] = sync_funds(sql, http, today)
     counts["B3"] = sync_equities(sql, http, today)
+    counts["YAHOO"] = sync_yahoo(sql, http, today)
     return counts
 
 
@@ -193,11 +198,15 @@ class Downloads:
         self.done.add(file)
 
 
+# The synthetic demo connection: its made-up symbols are never looked up.
+DEMO_ITEM = item_key(DEMO_SOURCE)
+
+
 def held(sql, condition: str) -> list[str]:
     return (
         sql(
             "SELECT DISTINCT symbol FROM core.provider_versions WHERE resource = 'investments' "
-            f"AND symbol IS NOT NULL AND {condition} FORMAT TSV"
+            f"AND symbol IS NOT NULL AND item_key != '{DEMO_ITEM}' AND {condition} FORMAT TSV"
         )
         .decode()
         .splitlines()
@@ -265,14 +274,18 @@ def parse_b3(payload: bytes, tickers: set[str]) -> list[dict]:
     return rows
 
 
-def sync_equities(sql, http: httpx.Client, today: date) -> int:
-    """The last 13 months of the held tickers' closing prices: monthly files for closed
-    months, daily files for the current one (or a closed month not published yet)."""
-    tickers = {
+def held_tickers(sql) -> set[str]:
+    return {
         symbol.upper()
         for symbol in held(sql, "type IN ('EQUITY', 'ETF')")
         if re.fullmatch(r"[A-Za-z0-9]{4,12}", symbol)
     }
+
+
+def sync_equities(sql, http: httpx.Client, today: date) -> int:
+    """The last 13 months of the held tickers' closing prices: monthly files for closed
+    months, daily files for the current one (or a closed month not published yet)."""
+    tickers = held_tickers(sql)
     if not tickers:
         return 0
     downloads = Downloads(sql, "B3", tickers)
@@ -304,4 +317,88 @@ def sync_equities(sql, http: httpx.Client, today: date) -> int:
                 # B3 publishes a day's file the next business day; older gaps are holidays.
                 count += fetch(f"D{day:%d%m%Y}", final=day < today - timedelta(days=5)) or 0
             day += timedelta(days=1)
+    return count
+
+
+# Yahoo Finance's chart endpoint, the one yfinance reads; not an official API.
+YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}.SA"
+
+
+def parse_yahoo(ticker: str, payload: object) -> list[dict]:
+    """Daily closes in BRL, dated in the exchange's time zone."""
+    try:
+        result = payload["chart"]["result"][0]
+        meta = result["meta"]
+        offset = timedelta(seconds=int(meta.get("gmtoffset", 0)))
+        stamps = result.get("timestamp") or []
+        closes = result["indicators"]["quote"][0]["close"]
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise ValueError("Unexpected Yahoo Finance chart") from None
+    if meta.get("currency") != "BRL" or len(stamps) != len(closes):
+        raise ValueError("Unexpected Yahoo Finance chart")
+    rows = []
+    for stamp, close in zip(stamps, closes, strict=True):
+        if close is None:
+            continue
+        price = Decimal(str(close)).quantize(Decimal("0.000001"))
+        if price.is_finite() and price > 0:
+            day = (datetime.fromtimestamp(int(stamp), UTC) + offset).date()
+            rows.append(
+                {"source": "YAHOO", "asset": ticker, "day": day.isoformat(), "price": str(price)}
+            )
+    return rows
+
+
+def sync_yahoo(sql, http: httpx.Client, today: date) -> int:
+    """Closing prices of held tickers that B3's files lack (no price there in 30 days),
+    from the day after the last one stored, or 13 months back. A ticker that fails is
+    skipped: its position keeps showing money put in."""
+    found = set(
+        sql(
+            "SELECT DISTINCT asset FROM core.market_prices WHERE source = 'B3' "
+            "AND day >= today() - 30 FORMAT TSV"
+        )
+        .decode()
+        .split()
+    )
+    missing = sorted(held_tickers(sql) - found)
+    if not missing:
+        return 0
+    stored = dict(
+        line.split("\t")
+        for line in sql(
+            "SELECT asset, toString(max(day)) FROM core.market_prices WHERE source = 'YAHOO' "
+            "GROUP BY asset FORMAT TSV"
+        )
+        .decode()
+        .splitlines()
+    )
+    count = 0
+    for ticker in missing:
+        since = (
+            date.fromisoformat(stored[ticker]) + timedelta(days=1)
+            if ticker in stored
+            else today - timedelta(days=400)
+        )
+        if since >= today:
+            continue
+        start = datetime(since.year, since.month, since.day, tzinfo=UTC)
+        try:
+            response = http.get(
+                YAHOO.format(ticker=ticker),
+                params={
+                    "interval": "1d",
+                    "period1": str(int(start.timestamp())),
+                    "period2": str(int(datetime.now(UTC).timestamp())),
+                },
+                # A generic browser agent; Yahoo refuses library defaults.
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            response.raise_for_status()
+            # Today's bar is still trading; it is fetched again tomorrow.
+            rows = [row for row in parse_yahoo(ticker, response.json()) if row["day"] < str(today)]
+        except (httpx.HTTPError, ValueError):
+            continue
+        store_prices(sql, rows)
+        count += len(rows)
     return count

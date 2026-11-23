@@ -183,8 +183,7 @@ paid, the spread between buying and redemption prices. Funds follow their quota
 in the CVM daily report (matched by CNPJ; subclasses are skipped as ambiguous)
 and stocks and ETFs their B3 closing price (matched by ticker; dividends arrive
 as account transactions, not in the position). A position without a curve or a
-price, such as an ETF that B3's files do not list, shows money put in on those
-days rather than market value. A position that received more than it holds and returned lost the
+price shows money put in on those days rather than market value. A position that received more than it holds and returned lost the
 rest without a reported withdrawal, such as a bill paid straight from a savings
 box; the chart warns about it and draws it at zero where the estimate would be
 negative, until those payments are registered as manual entries paid from the
@@ -215,7 +214,16 @@ are monthly or daily files for the whole market, never anything tied to a
 holding. `core.market_downloads` remembers the files already read for the
 current set of holdings, so later runs fetch only new files (and the CVM's last
 two months, which it still revises); buying a new fund or ticker fetches its
-history again. Run it after a sync; days
+history again.
+
+One source is asked by name: a held ticker with no price in B3's files over the
+last 30 days (an ETF B3 leaves out of its historical files) gets its daily
+closes from Yahoo Finance's chart endpoint, the one `yfinance` reads, so Yahoo
+sees that ticker. It is not an official API and may change or refuse requests;
+a ticker that fails keeps showing money put in, and the rest of the sync goes
+on. Only closed days are stored (never the bar still trading), and later runs
+ask only for the days after the last one stored. The synthetic demo connection
+is never looked up. Run it after a sync; days
 without a published rate yet reuse the latest one.
 
 **Investment classes** (on the **Categories** page) start as Renda fixa -
