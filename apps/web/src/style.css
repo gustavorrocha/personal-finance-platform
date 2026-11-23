@@ -874,10 +874,29 @@ th:nth-child(3) {
 .returns-dot.series-6 {
   fill: #008300;
 }
-.returns-zero,
-.returns-cursor {
-  stroke: #cddccd;
+.returns-zero {
+  stroke: #9fb3a8;
   stroke-width: 1;
+}
+.returns-grid,
+.returns-cursor {
+  stroke: #e3ebe3;
+  stroke-width: 1;
+}
+.returns-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.returns-mode {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.returns-mode button[aria-pressed="true"] {
+  background: #152d25;
+  color: #fff;
 }
 .returns-label,
 .returns-axis {

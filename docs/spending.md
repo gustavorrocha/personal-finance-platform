@@ -201,9 +201,13 @@ previous day's value. Positions without a rate or public price are left out and
 listed below the table. A position held for less than a period shows its return
 since it was bought, and every row's share of the CDI compares it with the CDI
 compounded over the days that row was held. The chart draws the cumulative
-12-month return of the portfolio, the CDI and each class (classes in the same
-colors and order as the invested wealth chart; end labels only up to four
-lines, the tooltip and table always).
+12-month return of the portfolio, the CDI and each class, each line starting on
+the first day its class held something (nothing is drawn before), with
+percentage gridlines. Its **vs CDI** view draws each line's lead over the CDI
+compounded on the same days instead, so the CDI is the zero line and classes
+that entered mid-year compare fairly. Classes keep the colors and order of the
+invested wealth chart; end labels appear only up to four lines, the tooltip and
+table always.
 
 `finance market-sync` downloads the last ten years of the public CDI, Selic and
 IPCA series from the Banco Central (SGS) into `core.market_rates`, and of every

@@ -238,13 +238,18 @@
     "returnsPortfolio": "1853eb2e9e5ed2bcc1d03b5a49cf407f2e43851363a8ffd0ce5ab7aa37ca8309",
     "returnsCdi": "128c6e6c753a3a0bbcbdaa405c051a2261db9b7a5107accd8a7a84641032a66c",
     "returnsOfCdi": "0cc13deefe57f6520f4653c15fc030c61d6dd47b9f2735a632cfb297e5332ee3",
-    "returnsChart": "743a0a149dfd9c6ae1f3b0bd97fe832528ffcc080e645a80613a584044dc8a5f",
+    "returnsChart": "e2625bf15f96193539b754326c34de23be5efc14bb292a363b2cc6d3ccb0f5a9",
     "returnsUncovered": "e68f73b49bdafabc4664a380a961fccecf60055357341e7a7474233cfdb872c5",
     "periodMonth": "310ca503ef36f177ddbc760463fcaec1edc6eca12bfd590ad7bb244b31e59543",
     "period3m": "bfd45132a8c6d6346dca8f2a60ab4b5bad371249f628e2be10a807fdf440d069",
     "period6m": "8ed94b4cf82d95487a6134b344b06ace905909dcbae2a50c22608937de66f6a4",
     "period12m": "5f58bdda2d4c6917bcc354a0172d161efd5ad7edb4dbf342143054217dc10f85",
-    "periodYtd": "757fd1902294c03e5ae4fa916f41cd1b7c5b21a27792ba3611285612e49f2664"
+    "periodYtd": "757fd1902294c03e5ae4fa916f41cd1b7c5b21a27792ba3611285612e49f2664",
+    "returnsChartView": "fcfefca034f5791136c7729e9d42a95a7e6d4805758d7724ab2dcbb0045dad7b",
+    "returnsCumulative": "cecf2aade089366e0a1d7c3dfc5acb40de8bb0d84c71b890d96da2f2de96c152",
+    "returnsVsCdi": "82761267b67abc47577320313458daff35716230bde04d8a3153c293b278df45",
+    "returnsVsCdiChart": "dbb81b3cc7ef0c7b5c6426240f252611b831ee1d9a2c2597fc0f31bb0aeccaa4",
+    "returnsVsCdiHelp": "95ebee8fe8823dc710784adc2ada1d227d213f63effc0c09e28ff279a1121927"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -485,12 +490,17 @@
     "returnsPortfolio": "Carteira",
     "returnsCdi": "CDI",
     "returnsOfCdi": "{percent} do CDI",
-    "returnsChart": "Rentabilidade acumulada em 12 meses",
+    "returnsChart": "Rentabilidade acumulada em 12 meses, cada classe desde que entrou na carteira",
     "returnsUncovered": "Fora do cálculo: estas posições não têm taxa nem preço público.",
     "periodMonth": "Mês",
     "period3m": "3 meses",
     "period6m": "6 meses",
     "period12m": "12 meses",
-    "periodYtd": "No ano"
+    "periodYtd": "No ano",
+    "returnsChartView": "Visualização do gráfico",
+    "returnsCumulative": "Acumulada",
+    "returnsVsCdi": "vs CDI",
+    "returnsVsCdiChart": "Vantagem sobre o CDI em 12 meses",
+    "returnsVsCdiHelp": "Cada linha mostra quanto cada classe está à frente do CDI (acima de zero) ou atrás dele, contando desde quando entrou na carteira, contra o CDI dos mesmos dias. Uma linha subindo está se distanciando do CDI."
   }
 }
