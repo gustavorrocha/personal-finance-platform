@@ -4,14 +4,14 @@ import json
 import re
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation, localcontext
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from finance_lake.bronze import ReplayRecord
 from finance_lake.manifest import Manifest, json_bytes
 from finance_pluggy.coverage import identifier
 
 from .collection import entity_key, item_key
-from .spending import spending_fields
+from .spending import digits, spending_fields
 from .warehouse import BronzeWarehouse, Execute
 
 
@@ -58,8 +58,138 @@ def decimal_field(value: object) -> str | None:
     return format(normalized, "f")
 
 
+def transaction_details(record: dict) -> dict:
+    metadata = record.get("creditCardMetadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    description = record.get("descriptionRaw")
+    if not isinstance(description, str) or not description.strip():
+        description = record.get("description")
+    category = record.get("category")
+    transaction_time = None
+    reported = record.get("date")
+    if isinstance(reported, str) and len(reported) > 10:
+        timestamp = datetime.fromisoformat(reported)
+        if timestamp.tzinfo is not None and any(
+            (timestamp.hour, timestamp.minute, timestamp.second, timestamp.microsecond)
+        ):
+            transaction_time = sql_time(timestamp)
+    purchase_date = None
+    try:
+        purchase_date = provider_date(metadata.get("purchaseDate"))
+    except ValueError:
+        pass
+    installments = {}
+    for field, key in (
+        ("installment_number", "installmentNumber"),
+        ("total_installments", "totalInstallments"),
+    ):
+        value = metadata.get(key)
+        installments[field] = value if type(value) is int and 1 <= value <= 65535 else None
+    purchase_amount = None
+    try:
+        purchase_amount = decimal_field(metadata.get("totalAmount"))
+    except ValueError:
+        pass
+    return {
+        "bank_description": description[:1024] if isinstance(description, str) else "",
+        "bank_category": category[:256] if isinstance(category, str) else "",
+        "transaction_time": transaction_time,
+        "original_purchase_date": purchase_date,
+        "installment_total_amount": purchase_amount,
+        **installments,
+    }
+
+
+FEES = (
+    "brokerageFee",
+    "clearingFee",
+    "custodyFee",
+    "settlementFee",
+    "stockExchangeFee",
+    "tradingAssetsNoticeFee",
+    "other",
+)
+
+
+def remuneration_fields(remuneration: object) -> dict:
+    remuneration = remuneration if isinstance(remuneration, dict) else {}
+    return {
+        "rate": decimal_field(remuneration.get("postFixedIndexerPercentage")),
+        "fixed_rate": decimal_field(remuneration.get("preFixedRate")),
+        "rate_type": text_field(remuneration.get("rateType")),
+        "indexer": text_field(remuneration.get("indexer")),
+        "rate_periodicity": text_field(remuneration.get("ratePeriodicity")),
+        "rate_calculation": text_field(remuneration.get("calculation")),
+    }
+
+
+def savings_box_rows(item: UUID, record: dict, account: dict) -> list[dict]:
+    """One row per savings box and currency reserved inside a bank account."""
+    bank = record.get("bankData")
+    boxes = bank.get("reservedBalances") if isinstance(bank, dict) else None
+    rows = []
+    for index, box in enumerate(boxes if isinstance(boxes, list) else []):
+        if not isinstance(box, dict):
+            raise ValueError("Invalid savings box")
+        box_id = text_field(box.get("identification"), 512)
+        if not box_id:
+            raise ValueError("Missing savings box identity")
+        amounts = box.get("availableAmounts")
+        for position, available in enumerate(amounts if isinstance(amounts, list) else []):
+            currency = available.get("currencyCode") if isinstance(available, dict) else None
+            if not isinstance(currency, str) or not re.fullmatch("[A-Z]{3}", currency):
+                raise ValueError("Invalid savings box currency")
+            rows.append(
+                {
+                    key: account[key]
+                    for key in ("run_id", "object_id", "item_key", "observed_at", "deleted")
+                }
+                | {
+                    "record_id": str(
+                        uuid5(UUID(account["record_id"]), f"savings_box:{index}:{position}")
+                    ),
+                    "resource": "savings_boxes",
+                    "entity_key": str(
+                        entity_key(
+                            item,
+                            "savings_boxes",
+                            f"{box_id}:{currency}",
+                            UUID(account["entity_key"]),
+                        )
+                    ),
+                    "scope_id": account["entity_key"],
+                    "type": "SAVINGS_BOX",
+                    "name": text_field(box.get("name"), 512),
+                    "currency": currency,
+                    "balance": decimal_field(available.get("amount")),
+                }
+                | remuneration_fields(available.get("remuneration"))
+            )
+    return rows
+
+
+def reserved_balance(record: dict, currency: str | None) -> str | None:
+    """Sum money set aside inside an account, such as savings boxes."""
+    bank = record.get("bankData")
+    reserved = bank.get("reservedBalances") if isinstance(bank, dict) else None
+    if not isinstance(reserved, list):
+        return None
+    total = Decimal(0)
+    for box in reserved:
+        amounts = box.get("availableAmounts") if isinstance(box, dict) else None
+        for entry in amounts if isinstance(amounts, list) else []:
+            if isinstance(entry, dict) and entry.get("currencyCode") == currency:
+                total += Decimal(decimal_field(entry.get("amount")) or 0)
+    return decimal_field(total)
+
+
 def normalized_row(
-    manifest: Manifest, item: UUID, entry: ReplayRecord, ordinal: int, cards: set[UUID]
+    manifest: Manifest,
+    item: UUID,
+    entry: ReplayRecord,
+    ordinal: int,
+    cards: set[UUID],
+    owners: frozenset[str] = frozenset(),
 ) -> dict:
     record = entry.record
     resource = entry.resource
@@ -132,11 +262,41 @@ def normalized_row(
     ):
         raise ValueError("Incomplete transaction")
     if resource == "transactions":
-        row.update(spending_fields(record, str(key), card_account=entry.scope_id in cards))
+        row.update(
+            spending_fields(record, str(key), card_account=entry.scope_id in cards, owners=owners)
+        )
+        row.update(transaction_details(record))
+    if resource == "accounts":
+        row["reserved_balance"] = reserved_balance(record, currency)
     if resource == "investments":
         row["rate_type"] = text_field(record.get("rateType"))
         row["symbol"] = text_field(record.get("code"))
         row["isin"] = text_field(record.get("isin"))
+        row["name"] = text_field(record.get("name"), 512)
+        row["issuer"] = text_field(record.get("issuer"), 512)
+        row["purchase_date"] = provider_date(record.get("purchaseDate"))
+        row["rate_periodicity"] = text_field(record.get("ratePeriodicity"))
+        for column, field in (
+            ("fixed_rate", "fixedAnnualRate"),
+            ("original_amount", "amountOriginal"),
+            ("withdrawal_amount", "amountWithdrawal"),
+            ("income_tax", "taxes"),
+            ("iof", "taxes2"),
+        ):
+            row[column] = decimal_field(record.get(field))
+    if resource == "investment_movements":
+        expenses = record.get("expenses")
+        expenses = expenses if isinstance(expenses, dict) else {}
+        row["movement_type"] = text_field(record.get("movementType"))
+        row["net_amount"] = decimal_field(record.get("netAmount"))
+        row["income_tax"] = decimal_field(expenses.get("incomeTax"))
+        row["iof"] = decimal_field(expenses.get("iof"))
+        fees = [decimal_field(expenses.get(field)) for field in FEES]
+        row["fees"] = (
+            decimal_field(sum(Decimal(fee) for fee in fees if fee is not None))
+            if any(fee is not None for fee in fees)
+            else None
+        )
     return row
 
 
@@ -199,10 +359,26 @@ class SilverWarehouse:
             for entry in entries
             if entry.resource == "accounts" and entry.record.get("type") == "CREDIT"
         }
+        # Account holders' documents, used only to recognize transfers between own accounts.
+        owners = frozenset(
+            document
+            for entry in entries
+            if entry.resource == "accounts"
+            and len(document := digits(entry.record.get("taxNumber"))) == 11
+        )
         rows = [
-            normalized_row(manifest, item, entry, ordinal, cards)
+            normalized_row(manifest, item, entry, ordinal, cards, owners)
             for ordinal, entry in enumerate(entries)
         ]
+        boxes = [
+            box
+            for entry, row in zip(entries, rows, strict=True)
+            if row["resource"] == "accounts"
+            for box in savings_box_rows(item, entry.record, row)
+        ]
+        for ordinal, box in enumerate(boxes, start=len(rows)):
+            box["row_order"] = ordinal
+        rows += boxes
         self.append("core.provider_versions", rows)
         self.append(
             "metadata.ingestion_publications",
@@ -215,8 +391,8 @@ class SilverWarehouse:
                     "accounts": sorted(
                         {row["entity_key"] for row in rows if row["resource"] == "accounts"}
                     ),
-                    "record_count": len(rows),
+                    "record_count": len(entries),
                 }
             ],
         )
-        return len(rows)
+        return len(entries)

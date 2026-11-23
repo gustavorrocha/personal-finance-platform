@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { visibleConnections } from "./connections";
 import { messages, type Locale } from "./locale";
 
 type Connection = { id: string; is_demo: boolean };
@@ -32,6 +33,10 @@ export function SnapshotView<T extends Snapshot>({
   const [retry, setRetry] = useState(0);
   const copy = messages[locale];
   const number = new Intl.NumberFormat(locale);
+  const connections = visibleConnections(snapshot?.connections ?? []);
+  const selected = connections.some(({ id }) => id === snapshot?.selected?.id)
+    ? snapshot?.selected
+    : null;
 
   useEffect(() => {
     const request = new AbortController();
@@ -62,19 +67,19 @@ export function SnapshotView<T extends Snapshot>({
         <label>
           {copy.connection}
           <select
-            value={item || snapshot?.selected?.id || ""}
-            disabled={loading || !snapshot?.connections.length}
+            value={selected?.id ?? ""}
+            disabled={loading || !connections.length}
             onChange={(event) => {
               setLoading(true);
               setItem(event.target.value);
             }}
           >
             <option value="">{copy.selectConnection}</option>
-            {snapshot?.connections.map(({ id, is_demo }, index) => (
-              <option value={id} key={id}>
-                {is_demo
+            {connections.map((connection) => (
+              <option value={connection.id} key={connection.id}>
+                {connection.is_demo
                   ? copy.syntheticDemo
-                  : `${copy.connection} ${number.format(index + 1)}`}
+                  : `${copy.connection} ${number.format((snapshot?.connections.indexOf(connection) ?? 0) + 1)}`}
               </option>
             ))}
           </select>
@@ -91,11 +96,11 @@ export function SnapshotView<T extends Snapshot>({
       )}
       {!loading &&
         !error &&
-        (snapshot?.selected ? (
+        (snapshot && selected ? (
           children(snapshot)
         ) : (
           <p className="empty">
-            {snapshot?.connections.length ? copy.selectConnection : emptyText}
+            {connections.length ? copy.selectConnection : emptyText}
           </p>
         ))}
     </main>

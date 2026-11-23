@@ -6,6 +6,12 @@ Open **Accounts** (**Contas**) in the dashboard. The view follows the dashboard'
 language preference. Select a connection to see each reported balance with its
 currency and observation time in UTC.
 
+The bank balance summary adds the latest reported bank balances within the
+selected connection and shows a separate total per currency. It flags missing
+bank balances or currencies, excludes credit cards and investments, and hides
+the summary when the account list is truncated. Each total shows the UTC range
+of observations used, or a single timestamp if all observations match.
+
 The localhost API exposes the latest reported account observation per account
 and connection at `GET /api/accounts`. A single connection is selected
 automatically. When more than one is available, use its pseudonymous ID from
@@ -83,6 +89,13 @@ Open **Investments** (**Investimentos**) and select a connection. The dashboard
 shows net balance, gross amount, currency, quantity, unit price, reference date,
 maturity date, and UTC observation time. A missing amount appears as unavailable.
 Use the reference date to tell when a reported value applies.
+
+The investment summary adds reported net balances by currency. It shows both
+the financial reference date range and the UTC observation range for the
+positions included in each total. Missing reference dates are flagged.
+Positions with only a gross amount are flagged as
+missing from the total. The summary is hidden when the position list is
+truncated.
 
 Rebuild the local stack and load the invented positions using PowerShell.
 

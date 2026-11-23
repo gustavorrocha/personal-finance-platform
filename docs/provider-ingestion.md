@@ -118,7 +118,9 @@ Version order is the UTC collection start or deletion receipt, then run UUID
 and record order. Economic dates remain independent of version order. Amounts,
 balances, rates and quantities use Decimal with 12 fractional digits and
 round-to-nearest, ties-to-even. Keep currency in aggregate checks.
-Descriptions and raw payloads stay in Bronze. Aggregate current views for
+Raw payloads stay in Bronze. A bounded bank description and selected timing,
+category, and installment fields are projected to the private localhost
+Spending dashboard. Aggregate current views for
 exact current counts and totals. Use observations for provenance and history.
 
 Keys are scoped to an existing item and, for transactions, bills and movements,
