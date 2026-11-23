@@ -232,7 +232,7 @@
   "automaticClass": "Automatic ({name})",
   "unclassifiedInvestment": "Unclassified",
   "investmentReturns": "Investment returns",
-  "investmentReturnsHelp": "Time-weighted returns up to {date}, before income tax. Each position earns its rate (CDI, Selic or fixed) or follows its public market price, so contributions, withdrawals and payments made from savings boxes are not counted as gains or losses, and Tesouro coupons count as earned. A position held for less than the period shows its return since it was bought.",
+  "investmentReturnsHelp": "Time-weighted returns up to {date}, before income tax. Each position earns its rate (CDI, Selic or fixed) or follows its public market price, so contributions, withdrawals and payments made from savings boxes are not counted as gains or losses, and Tesouro coupons count as earned. A position held for less than the period shows its return since it was bought, and its share of the CDI compares it with the CDI over the same days.",
   "investment": "Investment",
   "returnsPortfolio": "Portfolio",
   "returnsCdi": "CDI",

@@ -798,8 +798,12 @@ th:nth-child(3) {
   color: #7a5200;
 }
 
-/* Investment returns: portfolio (series 1) against the CDI (neutral, dashed). */
-.swatch.benchmark {
+/* Investment returns: classes in the series palette, the portfolio in ink, the CDI
+   dashed and neutral. */
+.swatch.returns-portfolio {
+  background: #152d25;
+}
+.swatch.returns-cdi {
   background: #7a8b83;
 }
 .returns-plot {
@@ -811,34 +815,69 @@ th:nth-child(3) {
   height: auto;
   touch-action: pan-y;
 }
-.returns-portfolio,
-.returns-cdi {
+.returns-line {
   fill: none;
   stroke-width: 2;
   stroke-linejoin: round;
 }
-.returns-portfolio {
-  stroke: #2a78d6;
+.returns-line.returns-portfolio {
+  stroke: #152d25;
+  stroke-width: 2.5;
 }
-.returns-cdi {
+.returns-line.returns-cdi {
   stroke: #7a8b83;
   stroke-dasharray: 5 4;
+}
+.returns-dot {
+  stroke: #fff;
+  stroke-width: 2;
+}
+.returns-dot.returns-portfolio {
+  fill: #152d25;
+}
+.returns-dot.returns-cdi {
+  fill: #7a8b83;
+}
+.returns-line.series-1 {
+  stroke: #2a78d6;
+}
+.returns-dot.series-1 {
+  fill: #2a78d6;
+}
+.returns-line.series-2 {
+  stroke: #eb6834;
+}
+.returns-dot.series-2 {
+  fill: #eb6834;
+}
+.returns-line.series-3 {
+  stroke: #1baf7a;
+}
+.returns-dot.series-3 {
+  fill: #1baf7a;
+}
+.returns-line.series-4 {
+  stroke: #eda100;
+}
+.returns-dot.series-4 {
+  fill: #eda100;
+}
+.returns-line.series-5 {
+  stroke: #e87ba4;
+}
+.returns-dot.series-5 {
+  fill: #e87ba4;
+}
+.returns-line.series-6 {
+  stroke: #008300;
+}
+.returns-dot.series-6 {
+  fill: #008300;
 }
 .returns-zero,
 .returns-cursor {
   stroke: #cddccd;
   stroke-width: 1;
-}
-.returns-portfolio-dot,
-.returns-cdi-dot {
-  stroke: #fff;
-  stroke-width: 2;
-}
-.returns-portfolio-dot {
-  fill: #2a78d6;
-}
-.returns-cdi-dot {
-  fill: #7a8b83;
 }
 .returns-label,
 .returns-axis {
@@ -869,16 +908,16 @@ th:nth-child(3) {
   display: block;
   color: #42594f;
 }
-.returns-portfolio th,
-.returns-portfolio td,
-.returns-class th {
+tr.returns-portfolio th,
+tr.returns-portfolio td,
+tr.returns-class th {
   font-weight: 600;
 }
-.returns-position th {
+tr.returns-position th {
   padding-left: 1.5rem;
   font-weight: 400;
 }
-.returns-benchmark th,
-.returns-benchmark td {
+tr.returns-benchmark th,
+tr.returns-benchmark td {
   color: #42594f;
 }
