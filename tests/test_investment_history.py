@@ -233,3 +233,30 @@ def test_cdi_comparison_starts_when_the_position_was_bought(monkeypatch):
     assert Decimal(result["cdi"]["12m"]) > expected  # the full-period CDI is longer
     kinds = [line["kind"] for line in result["series"]["lines"]]
     assert kinds == ["cdi", "portfolio", "class"]
+
+
+def test_chart_lines_start_when_their_class_entered(monkeypatch):
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 24)
+
+    monkeypatch.setattr(investment_history, "date", Today)
+    business = [
+        date(2025, 11, 1) + timedelta(days=n)
+        for n in range(390)
+        if (date(2025, 11, 1) + timedelta(days=n)).weekday() < 5
+    ]
+    rates = [{"series": "CDI", "day": str(day), "value": "0.05"} for day in business]
+    lca = snapshot("lca", "2026-11-20", "1000", indexer="CDI", name="LCA")
+    lca |= {"rate": "110", "purchase_date": "2026-11-10"}
+    result = investment_history.invested_returns([lca], [], {}, CLASSES, rates, [])
+    days = result["series"]["days"]
+    line = next(line for line in result["series"]["lines"] if line["kind"] == "class")
+    entered = days.index("2026-11-10")  # the purchase day: the first one with a value
+    assert line["values"][entered - 1] is None and line["values"][entered] == "0.000000"
+    assert line["excess"][entered] == "0.000000"
+    # 110% of the CDI: ahead of it from the purchase on, whatever happened before.
+    assert Decimal(line["excess"][-1]) > 0
+    cdi = result["series"]["lines"][0]
+    assert cdi["kind"] == "cdi" and cdi["values"][0] == "0.000000"

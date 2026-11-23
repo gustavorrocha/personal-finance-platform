@@ -425,19 +425,35 @@ def invested_returns(
             )
     first = days.index(bases["12m"])
 
-    def line(kind: str, key: str, name: str, path: list[Decimal]) -> dict:
-        return {
-            "kind": kind,
-            "key": key,
-            "name": name,
-            "values": [f"{level / path[first] - 1:.6f}" for level in path[first:]],
-        }
+    def line(kind: str, key: str, name: str, group: str | None) -> dict:
+        """Cumulative return from the later of the chart's start and the day before the
+        group was first held (None before it), and its lead over the CDI compounded on the
+        same days."""
+        if group is None:
+            path, benchmark, held_from = compound(cdi_daily), compound(cdi_daily), first
+        else:
+            path, benchmark, weights = measure(group)
+            entered = next(
+                (offset for offset in range(first + 1, len(days)) if weights[offset]),
+                len(days),
+            )
+            held_from = max(first, entered - 1)
+        values, excess = [], []
+        for offset in range(first, len(days)):
+            if offset < held_from:
+                values.append(None)
+                excess.append(None)
+                continue
+            gain = path[offset] / path[held_from]
+            values.append(f"{gain - 1:.6f}")
+            excess.append(f"{gain / (benchmark[offset] / benchmark[held_from]) - 1:.6f}")
+        return {"kind": kind, "key": key, "name": name, "values": values, "excess": excess}
 
-    lines = [line("cdi", "", "", compound(cdi_daily))]
+    lines = [line("cdi", "", "", None)]
     if "" in weight:
-        lines.append(line("portfolio", "", "", measure("")[0]))
+        lines.append(line("portfolio", "", "", ""))
     lines += [
-        line("class", key, names.get(key, ""), measure(f"class:{key}")[0])
+        line("class", key, names.get(key, ""), f"class:{key}")
         for key in ordered
         if f"class:{key}" in weight
     ]

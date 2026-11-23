@@ -24,7 +24,10 @@ export type InvestmentReturnsData = {
       kind: "cdi" | "portfolio" | "class";
       key: string;
       name: string;
-      values: string[];
+      /** Cumulative return, null before the line's class entered the portfolio. */
+      values: (string | null)[];
+      /** Lead over the CDI compounded on the same days. */
+      excess: (string | null)[];
     }[];
   };
 };
@@ -158,9 +161,25 @@ export function InvestmentReturns({
 }
 
 const WIDTH = 640;
-const HEIGHT = 240;
-const PAD = { top: 12, right: 8, bottom: 24, left: 8 };
+const HEIGHT = 260;
+const PAD = { top: 12, right: 8, bottom: 24, left: 56 };
 const LABEL_WIDTH = 150;
+const STEPS = [
+  0.001, 0.0025, 0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1,
+];
+
+/** Round tick values covering [low, high] with at most six intervals. */
+function ticks(low: number, high: number) {
+  const step = STEPS.find((size) => (high - low) / size <= 6) ?? 1;
+  const values = [];
+  for (
+    let value = Math.floor(low / step) * step;
+    value <= high + step / 2;
+    value += step
+  )
+    values.push(Number(value.toFixed(6)));
+  return values;
+}
 
 function ReturnsChart({
   series,
@@ -175,38 +194,54 @@ function ReturnsChart({
 }) {
   const copy = messages[locale];
   const [hover, setHover] = useState<number>();
-  const { days, lines } = series;
-  if (days.length < 2 || lines.length === 0) return null;
+  const [mode, setMode] = useState<"values" | "excess">("values");
+  const { days } = series;
+  if (days.length < 2 || series.lines.length === 0) return null;
   // Classes in the API's order (by name, unclassified last) take the fixed palette;
   // the portfolio is drawn in ink and the CDI dashed, outside the palette.
   let next = 0;
-  const styled = lines.map((line) => ({
+  const styled = series.lines.map((line) => ({
     line,
     className:
       line.kind === "class"
         ? `series-${Math.min(next++, SERIES - 1) + 1}`
         : `returns-${line.kind}`,
   }));
+  // Against the CDI, the CDI itself is the zero line.
+  const shown = styled.filter(
+    ({ line }) => mode === "values" || line.kind !== "cdi",
+  );
+  const points = (line: Line) => line[mode];
   // Draw the CDI first and the portfolio last, on top.
   const drawn = [
-    ...styled.filter(({ line }) => line.kind === "cdi"),
-    ...styled.filter(({ line }) => line.kind === "class"),
-    ...styled.filter(({ line }) => line.kind === "portfolio"),
+    ...shown.filter(({ line }) => line.kind === "cdi"),
+    ...shown.filter(({ line }) => line.kind === "class"),
+    ...shown.filter(({ line }) => line.kind === "portfolio"),
   ];
-  const labelled = lines.length <= LABELLED;
+  const labelled = shown.length <= LABELLED;
   const right = WIDTH - PAD.right - (labelled ? LABEL_WIDTH : 0);
-  const values = lines.flatMap((line) => line.values.map(Number));
-  const low = Math.min(0, ...values);
-  const high = Math.max(0, ...values);
+  const values = shown.flatMap(({ line }) =>
+    points(line)
+      .filter((value): value is string => value !== null)
+      .map(Number),
+  );
+  const grid = ticks(Math.min(0, ...values), Math.max(0, ...values));
+  const low = grid[0];
+  const high = grid[grid.length - 1];
   const span = high - low || 1;
   const x = (index: number) =>
     PAD.left + (index / (days.length - 1)) * (right - PAD.left);
   const y = (value: number) =>
     PAD.top + ((high - value) / span) * (HEIGHT - PAD.top - PAD.bottom);
   const last = days.length - 1;
+  const axis = (value: number) =>
+    new Intl.NumberFormat(locale, {
+      style: "percent",
+      maximumFractionDigits: 2,
+    }).format(value);
   // End labels, nudged apart so they never overlap.
-  const ends = styled
-    .map(({ line }) => ({ line, at: y(Number(line.values[last])) }))
+  const ends = shown
+    .map(({ line }) => ({ line, at: y(Number(points(line)[last])) }))
     .sort((a, b) => a.at - b.at);
   for (let index = 1; index < ends.length; index += 1)
     ends[index].at = Math.max(ends[index].at, ends[index - 1].at + 14);
@@ -216,14 +251,34 @@ function ReturnsChart({
       ({ day, index }) =>
         index === last || day.slice(0, 7) !== days[index + 1].slice(0, 7),
     );
-  const summary = lines
-    .map((line) => `${label(line)} ${percent(line.values[last])}`)
+  const title = mode === "values" ? copy.returnsChart : copy.returnsVsCdiChart;
+  const summary = shown
+    .map(({ line }) => `${label(line)} ${percent(points(line)[last])}`)
     .join(", ");
   return (
     <div className="chart returns-chart">
-      <h3>{copy.returnsChart}</h3>
+      <div className="returns-heading">
+        <h3>{title}</h3>
+        <div
+          className="returns-mode"
+          role="group"
+          aria-label={copy.returnsChartView}
+        >
+          {(["values", "excess"] as const).map((option) => (
+            <button
+              type="button"
+              key={option}
+              aria-pressed={mode === option}
+              onClick={() => setMode(option)}
+            >
+              {option === "values" ? copy.returnsCumulative : copy.returnsVsCdi}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === "excess" && <p>{copy.returnsVsCdiHelp}</p>}
       <ul className="legend">
-        {styled.map(({ line, className }) => (
+        {shown.map(({ line, className }) => (
           <li key={`${line.kind}-${line.key}`}>
             <i className={`swatch ${className}`} aria-hidden="true" />
             {label(line)}
@@ -234,7 +289,7 @@ function ReturnsChart({
         <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           role="img"
-          aria-label={`${copy.returnsChart}: ${summary}`}
+          aria-label={`${title}: ${summary}`}
           onPointerMove={(event) => {
             const box = event.currentTarget.getBoundingClientRect();
             const position =
@@ -246,19 +301,36 @@ function ReturnsChart({
           }}
           onPointerLeave={() => setHover(undefined)}
         >
-          <line
-            className="returns-zero"
-            x1={PAD.left}
-            x2={right}
-            y1={y(0)}
-            y2={y(0)}
-          />
+          {grid.map((value) => (
+            <g key={value}>
+              <line
+                className={value === 0 ? "returns-zero" : "returns-grid"}
+                x1={PAD.left}
+                x2={right}
+                y1={y(value)}
+                y2={y(value)}
+              />
+              <text
+                className="returns-axis"
+                x={PAD.left - 6}
+                y={y(value)}
+                textAnchor="end"
+              >
+                {value === 0 && mode === "excess"
+                  ? copy.returnsCdi
+                  : axis(value)}
+              </text>
+            </g>
+          ))}
           {drawn.map(({ line, className }) => (
             <polyline
               key={`${line.kind}-${line.key}`}
               className={`returns-line ${className}`}
-              points={line.values
-                .map((value, index) => `${x(index)},${y(Number(value))}`)
+              points={points(line)
+                .map((value, index) =>
+                  value === null ? null : `${x(index)},${y(Number(value))}`,
+                )
+                .filter(Boolean)
                 .join(" ")}
             />
           ))}
@@ -270,7 +342,7 @@ function ReturnsChart({
                 x={right + 8}
                 y={at}
               >
-                {label(line)} {percent(line.values[last])}
+                {label(line)} {percent(points(line)[last])}
               </text>
             ))}
           <text className="returns-axis" x={PAD.left} y={HEIGHT - 6}>
@@ -293,15 +365,18 @@ function ReturnsChart({
                 y1={PAD.top}
                 y2={HEIGHT - PAD.bottom}
               />
-              {drawn.map(({ line, className }) => (
-                <circle
-                  key={`${line.kind}-${line.key}`}
-                  className={`returns-dot ${className}`}
-                  cx={x(hover)}
-                  cy={y(Number(line.values[hover]))}
-                  r={4}
-                />
-              ))}
+              {drawn.map(({ line, className }) => {
+                const value = points(line)[hover];
+                return value === null ? null : (
+                  <circle
+                    key={`${line.kind}-${line.key}`}
+                    className={`returns-dot ${className}`}
+                    cx={x(hover)}
+                    cy={y(Number(value))}
+                    r={4}
+                  />
+                );
+              })}
             </g>
           )}
         </svg>
@@ -312,11 +387,13 @@ function ReturnsChart({
             aria-hidden="true"
           >
             <b>{formatDate(days[hover], locale)}</b>
-            {styled.map(({ line }) => (
-              <span key={`${line.kind}-${line.key}`}>
-                {label(line)}: {percent(line.values[hover])}
-              </span>
-            ))}
+            {shown.map(({ line }) =>
+              points(line)[hover] === null ? null : (
+                <span key={`${line.kind}-${line.key}`}>
+                  {label(line)}: {percent(points(line)[hover])}
+                </span>
+              ),
+            )}
           </span>
         )}
       </div>
@@ -327,7 +404,7 @@ function ReturnsChart({
             <thead>
               <tr>
                 <th scope="col">{copy.month}</th>
-                {styled.map(({ line }) => (
+                {shown.map(({ line }) => (
                   <th
                     scope="col"
                     className="numeric"
@@ -342,9 +419,9 @@ function ReturnsChart({
               {months.map(({ day, index }) => (
                 <tr key={day}>
                   <th scope="row">{formatDate(day, locale)}</th>
-                  {styled.map(({ line }) => (
+                  {shown.map(({ line }) => (
                     <td className="numeric" key={`${line.kind}-${line.key}`}>
-                      {percent(line.values[index])}
+                      {percent(points(line)[index])}
                     </td>
                   ))}
                 </tr>
