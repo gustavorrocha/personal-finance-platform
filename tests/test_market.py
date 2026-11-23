@@ -11,8 +11,10 @@ from finance_ingestion.market import (
     parse_b3,
     parse_funds,
     parse_treasury,
+    parse_yahoo,
     sync_equities,
     sync_rates,
+    sync_yahoo,
 )
 
 
@@ -129,3 +131,54 @@ def test_equity_files_already_downloaded_are_not_fetched_again():
     # never came are holidays and are not asked for again.
     assert "D18112026.ZIP" in requests[first:] and "D02112026.ZIP" not in requests[first:]
     assert len(requests) - first < first
+
+
+def test_tickers_missing_from_b3_are_asked_from_yahoo_only():
+    def sql(query, payload=b""):
+        if "FROM core.provider_versions" in query:
+            assert "item_key != '77b7ff50-da90-5c0d-b938-f4af43c8b6de'" in query
+            return b"ETFX11\nLIST3\n"
+        if "source = 'B3'" in query:
+            return b"LIST3\n"  # listed in B3's files: never sent to Yahoo
+        if "source = 'YAHOO'" in query:
+            return b"ETFX11\t2026-11-18\n"
+        stored.append(payload)
+        return b""
+
+    stored, asked = [], []
+    chart = {
+        "chart": {
+            "result": [
+                {
+                    "meta": {"currency": "BRL", "gmtoffset": -10800},
+                    "timestamp": [1795093200, 1795179600],  # 19 and 20/11 at 10:00 local
+                    "indicators": {"quote": [{"close": [112.2, None]}]},
+                }
+            ]
+        }
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append((request.url.path, request.url.params["period1"]))
+        return httpx.Response(200, json=chart)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        assert sync_yahoo(sql, http, date(2026, 11, 23)) == 1
+    assert asked == [("/v8/finance/chart/ETFX11.SA", "1795046400")]  # from 19/11
+    assert b'"day": "2026-11-19", "price": "112.200000"' in stored[0]
+
+
+def test_yahoo_charts_in_other_currencies_are_rejected():
+    chart = {
+        "chart": {
+            "result": [
+                {
+                    "meta": {"currency": "USD"},
+                    "timestamp": [],
+                    "indicators": {"quote": [{"close": []}]},
+                }
+            ]
+        }
+    }
+    with pytest.raises(ValueError):
+        parse_yahoo("ETFX11", chart)
