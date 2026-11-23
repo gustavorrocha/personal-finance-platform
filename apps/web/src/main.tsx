@@ -1,20 +1,23 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
-import {
-  CategoriesView,
-  categoryPath,
-  categoryTree,
-  type CategoryNode,
-} from "./categories";
+import { CategoriesView, categoryPath, type CategoryNode } from "./categories";
 import { visibleConnections } from "./connections";
 import { InvestmentsView } from "./investments";
+import {
+  ExpenseDialog,
+  type DialogExpense,
+  type RuleScope,
+} from "./expense-dialog";
 import { ManualExpenses } from "./manual-expenses";
+import { Menu, Toast } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
   CategoryComparison,
   InvestmentComparison,
   InvestedEvolution,
+  type InvestedGap,
+  type InvestedPoint,
   InvestedTotal,
   InvestmentOverview,
   type InvestedRow,
@@ -54,11 +57,11 @@ type Expense = TransactionDetails & {
   category: string;
   subcategory?: string;
   category_id?: string;
-  category_rule?: "" | "merchant" | "mcc" | "provider" | "manual";
+  category_rule?:
+    "" | "transaction" | "merchant" | "mcc" | "provider" | "manual";
   provider_category_id?: string;
   status?: "POSTED" | "PENDING";
 };
-type RuleScope = "merchant" | "mcc" | "provider";
 type CategoryFilter = { category: string; subcategory?: string };
 const RECENT_ROWS = 10;
 type Review = Omit<Expense, "category"> & {
@@ -72,11 +75,14 @@ type Spending = {
   totals: Total[];
   history?: HistoryRow[];
   investments?: InvestmentRow[];
-  invested_history?: { month: string; currency: string; total: string }[];
+  invested_history?: InvestedPoint[];
+  invested_gaps?: InvestedGap[];
+  chart_month?: string | null;
   invested?: InvestedRow[];
   expenses: Expense[];
   has_more_expenses?: boolean;
   reviews: Review[];
+  receipts?: (Review & { category?: string })[];
   categories: CategoryNode[];
 };
 
@@ -113,7 +119,10 @@ function App() {
   const [suggesting, setSuggesting] = useState(false);
   const [attempted, setAttempted] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<Record<string, string>>({});
-  const [scopes, setScopes] = useState<Record<string, RuleScope>>({});
+  const [selected, setSelected] = useState<{
+    entry: DialogExpense;
+    editable: boolean;
+  }>();
   const [filter, setFilter] = useState<CategoryFilter>();
   const [expanded, setExpanded] = useState(false);
   const [suggestionStatus, setSuggestionStatus] = useState<
@@ -146,7 +155,6 @@ function App() {
 
   useEffect(() => {
     if (view !== "spending") return;
-    setScopes({});
     const request = new AbortController();
     const query = new URLSearchParams();
     if (item) query.set("item", item);
@@ -238,7 +246,7 @@ function App() {
       | { category: string | null; scope: RuleScope }
       | { decision: "include" | "exclude" | "reset" },
   ) {
-    if (!data?.selected) return;
+    if (!data?.selected) return false;
     setSaving(true);
     setError(undefined);
     setNotice(undefined);
@@ -256,8 +264,11 @@ function App() {
       if (!response.ok) throw new Error();
       setNotice(path === "rules" ? "saved" : "reviewSaved");
       setRevision((value) => value + 1);
+      setSelected(undefined);
+      return true;
     } catch {
       setError(path === "rules" ? "saveError" : "reviewError");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -278,17 +289,129 @@ function App() {
     ]),
   );
   const categories = data?.categories ?? [];
+  // Keep showing the last result while a new one loads, so the page does not jump.
+  const ready = Boolean(data) && error !== "loadError";
+  const dismissToast = useCallback(() => {
+    setNotice(undefined);
+    setError((current) => (current === "loadError" ? current : undefined));
+  }, []);
   const showAll = expanded || Boolean(search) || Boolean(filter);
   const visibleExpenses = showAll
     ? (data?.expenses ?? [])
     : (data?.expenses ?? []).slice(0, RECENT_ROWS);
+  const receipts = data?.receipts ?? [];
+  const pendingReceipts = receipts.filter((row) => !row.decision);
+  const decidedReceipts = receipts.filter((row) => row.decision);
   const pendingReviews = data?.reviews.filter((row) => !row.decision) ?? [];
   const decidedReviews = data?.reviews.filter((row) => row.decision) ?? [];
-  const tree = categoryTree(categories);
   const uncategorized =
     data?.totals
       .filter((row) => row.bucket === "")
       .reduce((sum, row) => sum + Number(row.entries), 0) ?? 0;
+
+  function receiptTable(rows: (Review & { category?: string })[]) {
+    return (
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">{copy.date}</th>
+              <th scope="col">{copy.transactionDetails}</th>
+              <th scope="col" className="numeric">
+                {copy.amount}
+              </th>
+              <th scope="col">{copy.reviewAction}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((entry) => (
+              <tr key={entry.id}>
+                <td>
+                  <time dateTime={entry.date}>
+                    {formatDate(entry.date, locale)}
+                  </time>
+                </td>
+                <TransactionDetailCell
+                  entry={entry}
+                  locale={locale}
+                  compact
+                  onOpen={() =>
+                    setSelected({
+                      entry: { ...entry, amount: `-${entry.amount}` },
+                      editable: entry.decision === "include",
+                    })
+                  }
+                  connection={
+                    combined ? connectionLabels.get(entry.item) : undefined
+                  }
+                />
+                <td className="numeric">
+                  {formatMoney(entry.amount, entry.currency, locale)}
+                  {entry.decision === "include" && (
+                    <div>
+                      <small>
+                        {entry.category
+                          ? entry.subcategory
+                            ? `${entry.category} › ${entry.subcategory}`
+                            : entry.category
+                          : copy.uncategorized}
+                      </small>
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <div className="review-actions">
+                    {entry.decision !== "include" && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={async () => {
+                          // Counted refunds need a subcategory: ask for it right away.
+                          if (
+                            await save("reviews", entry, {
+                              decision: "include",
+                            })
+                          )
+                            setSelected({
+                              entry: { ...entry, amount: `-${entry.amount}` },
+                              editable: true,
+                            });
+                        }}
+                      >
+                        {copy.countAsRefund}
+                      </button>
+                    )}
+                    {entry.decision !== "exclude" && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          void save("reviews", entry, { decision: "exclude" })
+                        }
+                      >
+                        {copy.notRefund}
+                      </button>
+                    )}
+                    {entry.decision && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          void save("reviews", entry, { decision: "reset" })
+                        }
+                      >
+                        {copy.resetReview}
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   function reviewTable(rows: Review[]) {
     return (
@@ -314,6 +437,8 @@ function App() {
                 <TransactionDetailCell
                   entry={entry}
                   locale={locale}
+                  compact
+                  onOpen={() => setSelected({ entry, editable: false })}
                   connection={
                     combined ? connectionLabels.get(entry.item) : undefined
                   }
@@ -440,9 +565,50 @@ function App() {
         </a>
       </nav>
       {view === "categories" && <CategoriesView locale={locale} />}
+      <Toast
+        message={
+          notice
+            ? copy[notice]
+            : error && error !== "loadError"
+              ? copy[error]
+              : undefined
+        }
+        tone={notice ? "info" : "error"}
+        closeLabel={copy.close}
+        onDone={dismissToast}
+      />
+      <ExpenseDialog
+        key={selected?.entry.id}
+        entry={selected?.entry}
+        editable={selected?.editable ?? false}
+        categories={categories}
+        locale={locale}
+        connection={
+          selected && combined
+            ? connectionLabels.get(selected.entry.item)
+            : undefined
+        }
+        saving={saving}
+        suggestion={selected ? suggestions[selected.entry.id] : undefined}
+        onSave={(category, scope) => {
+          if (selected) void save("rules", selected.entry, { category, scope });
+        }}
+        onDismissSuggestion={() => {
+          if (!selected) return;
+          setSuggestions((current) => ({
+            ...current,
+            [selected.entry.id]: "",
+          }));
+        }}
+        onClose={() => setSelected(undefined)}
+      />
       {view === "accounts" && <AccountsView locale={locale} />}
       {view === "investments" && <InvestmentsView locale={locale} />}
-      <main className="frame" hidden={view !== "spending"} aria-busy={loading}>
+      <main
+        className={loading && data ? "frame refreshing" : "frame"}
+        hidden={view !== "spending"}
+        aria-busy={loading}
+      >
         <div className="intro">
           <h1>{copy.title}</h1>
           <div className="filters">
@@ -526,8 +692,7 @@ function App() {
             </label>
           </div>
         </div>
-        {notice && <p role="status">{copy[notice]}</p>}
-        {error && (
+        {error === "loadError" && (
           <p role="alert">
             {copy[error]}{" "}
             <button type="button" onClick={() => setRevision((n) => n + 1)}>
@@ -535,21 +700,20 @@ function App() {
             </button>
           </p>
         )}
-        {loading && <p role="status">{copy.loading}</p>}
-        {!loading && !error && !data?.selected && (
+        {loading && !data && <p role="status">{copy.loading}</p>}
+        {ready && !data?.selected && (
           <p className="empty">
             {data?.connections.length
               ? copy.selectForSpending
               : copy.noExpenses}
           </p>
         )}
-        {!loading &&
-          !error &&
+        {ready &&
           data?.selected &&
           !history.some((row) => row.month === data.month) && (
             <p className="empty">{copy.noSpending}</p>
           )}
-        {!loading && !error && data?.selected && (
+        {ready && data?.selected && (
           <section className="panel" aria-labelledby="reviews">
             <h2 id="reviews">
               {copy.reviewTitle}
@@ -575,8 +739,27 @@ function App() {
             {data.reviews.length === 100 && <p>{copy.reviewLimit}</p>}
           </section>
         )}
-        {!loading &&
-          !error &&
+        {ready && data?.selected && receipts.length > 0 && (
+          <section className="panel" aria-labelledby="receipts">
+            <h2 id="receipts">
+              {copy.receiptsTitle}
+              {pendingReceipts.length > 0 &&
+                ` (${number.format(pendingReceipts.length)})`}
+            </h2>
+            <p>{copy.receiptsHelp}</p>
+            {pendingReceipts.length > 0 && receiptTable(pendingReceipts)}
+            {decidedReceipts.length > 0 && (
+              <details open={pendingReceipts.length === 0}>
+                <summary>
+                  {copy.decidedReceipts} (
+                  {number.format(decidedReceipts.length)})
+                </summary>
+                {receiptTable(decidedReceipts)}
+              </details>
+            )}
+          </section>
+        )}
+        {ready &&
           data?.selected &&
           (history.length > 0 ||
             investments.length > 0 ||
@@ -599,6 +782,7 @@ function App() {
                 <MonthlyComparison
                   rows={history}
                   month={data.month ?? ""}
+                  end={data.chart_month ?? data.month ?? ""}
                   locale={locale}
                   disabled={saving || suggesting}
                   onSelect={(value) => {
@@ -618,6 +802,7 @@ function App() {
                   <InvestmentComparison
                     rows={investments}
                     month={data.month ?? ""}
+                    end={data.chart_month ?? data.month ?? ""}
                     locale={locale}
                     disabled={saving || suggesting}
                     onSelect={(value) => {
@@ -632,7 +817,11 @@ function App() {
                   <h2 id="invested-evolution">{copy.investedEvolution}</h2>
                   <InvestedEvolution
                     rows={data.invested_history ?? []}
+                    gaps={data.invested_gaps ?? []}
                     locale={locale}
+                    positionsLabel={(id) =>
+                      `${copy.investmentPositions} · ${connectionLabels.get(id) ?? copy.connection}`
+                    }
                   />
                 </section>
               )}
@@ -660,7 +849,7 @@ function App() {
               </section>
             </>
           )}
-        {!loading && !error && data?.selected && (
+        {ready && data?.selected && (
           <>
             <section className="panel" aria-labelledby="expenses">
               <h2 id="expenses">{copy.recentExpenses}</h2>
@@ -717,155 +906,119 @@ function App() {
                   <p role="status">{copy[suggestionStatus]}</p>
                 )}
               <div className="table-wrap">
-                <table>
+                <table className="expense-table">
                   <thead>
                     <tr>
                       <th scope="col">{copy.date}</th>
                       <th scope="col">{copy.transactionDetails}</th>
-                      <th scope="col">{copy.amount}</th>
                       <th scope="col">{copy.category}</th>
+                      <th scope="col" className="numeric">
+                        {copy.amount}
+                      </th>
+                      <th scope="col">
+                        <span className="visually-hidden">
+                          {copy.reviewAction}
+                        </span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleExpenses.map((entry) => (
-                      <tr key={entry.id}>
-                        <td>
-                          <time dateTime={entry.date}>
-                            {formatDate(entry.date, locale)}
-                          </time>
-                        </td>
-                        <TransactionDetailCell
-                          entry={entry}
-                          locale={locale}
-                          connection={
-                            combined
-                              ? connectionLabels.get(entry.item)
-                              : undefined
-                          }
-                        />
-                        <td>
-                          {formatMoney(entry.amount, entry.currency, locale)}
-                          <div>
-                            <small>
-                              {entry.status === "PENDING"
-                                ? copy.pendingStatus
-                                : copy.postedStatus}
-                            </small>
-                          </div>
-                        </td>
-                        <td>
-                          <select
-                            aria-label={copy.categoryFor(
-                              entry.merchant || copy.expense,
-                              formatDate(entry.date, locale),
-                            )}
-                            disabled={
-                              saving ||
-                              suggesting ||
-                              loading ||
-                              entry.status === "PENDING"
+                    {visibleExpenses.map((entry) => {
+                      // Pending card purchases already count: they are editable too.
+                      const open = () => setSelected({ entry, editable: true });
+                      return (
+                        <tr key={entry.id}>
+                          <td>
+                            <time dateTime={entry.date}>
+                              {formatDate(entry.date, locale)}
+                            </time>
+                          </td>
+                          <TransactionDetailCell
+                            entry={entry}
+                            locale={locale}
+                            compact
+                            onOpen={open}
+                            connection={
+                              combined
+                                ? connectionLabels.get(entry.item)
+                                : undefined
                             }
-                            value={entry.category_id ?? ""}
-                            onChange={(event) =>
-                              void save("rules", entry, {
-                                category: event.target.value || null,
-                                scope: scopes[entry.id] ?? "merchant",
-                              })
-                            }
-                          >
-                            <option value="">{copy.automaticCategory}</option>
-                            {tree.map((top) => (
-                              <optgroup key={top.id} label={top.name}>
-                                <option value={top.id}>
-                                  {top.name} · {copy.wholeCategory}
-                                </option>
-                                {top.children.map((child) => (
-                                  <option key={child.id} value={child.id}>
-                                    {child.name}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                          {entry.status !== "PENDING" && (
-                            <select
-                              className="rule-scope"
-                              aria-label={copy.ruleScope}
-                              value={scopes[entry.id] ?? "merchant"}
-                              disabled={saving || suggesting || loading}
-                              onChange={(event) =>
-                                setScopes((current) => ({
-                                  ...current,
-                                  [entry.id]: event.target.value as RuleScope,
-                                }))
+                          />
+                          <td>
+                            <button
+                              type="button"
+                              className={
+                                entry.category
+                                  ? "category-chip"
+                                  : "category-chip empty"
                               }
+                              onClick={open}
+                              aria-label={copy.categoryFor(
+                                entry.merchant || copy.expense,
+                                formatDate(entry.date, locale),
+                              )}
                             >
-                              <option value="merchant">
-                                {copy.scopeMerchant}
-                              </option>
-                              {entry.mcc != null && (
-                                <option value="mcc">
-                                  {copy.scopeMcc} {entry.mcc}
-                                </option>
-                              )}
-                              {entry.provider_category_id && (
-                                <option value="provider">
-                                  {copy.scopeProvider}:{" "}
-                                  {entry.bank_category ||
-                                    entry.provider_category_id}
-                                </option>
-                              )}
-                            </select>
-                          )}
-                          <div>
-                            <small>
-                              {entry.category_rule
-                                ? copy[`rule_${entry.category_rule}`]
+                              {entry.category
+                                ? entry.subcategory
+                                  ? `${entry.category} › ${entry.subcategory}`
+                                  : entry.category
                                 : copy.uncategorized}
-                              {entry.bank_category &&
-                                ` · ${copy.bankCategory}: ${entry.bank_category}`}
-                            </small>
-                          </div>
-                          {!entry.category && suggestions[entry.id] && (
-                            <div className="suggestion">
-                              <p>
-                                {copy.suggested} ·{" "}
-                                {categoryPath(
-                                  categories,
-                                  suggestions[entry.id],
-                                )}
-                              </p>
-                              <div className="review-actions">
-                                <button
-                                  type="button"
-                                  disabled={saving}
-                                  onClick={() =>
-                                    void save("rules", entry, {
-                                      category: suggestions[entry.id],
-                                      scope: "merchant",
-                                    })
-                                  }
-                                >
-                                  {copy.applySuggestion}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={saving}
-                                  onClick={() =>
-                                    setSuggestions((current) => ({
-                                      ...current,
-                                      [entry.id]: "",
-                                    }))
-                                  }
-                                >
-                                  {copy.dismissSuggestion}
-                                </button>
+                            </button>
+                            {!entry.category && suggestions[entry.id] && (
+                              <div>
+                                <small>
+                                  {copy.suggested} ·{" "}
+                                  {categoryPath(
+                                    categories,
+                                    suggestions[entry.id],
+                                  )}
+                                </small>
                               </div>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                            )}
+                          </td>
+                          <td className="numeric">
+                            {formatMoney(entry.amount, entry.currency, locale)}
+                            {entry.status === "PENDING" && (
+                              <div>
+                                <small>{copy.pendingStatus}</small>
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <Menu
+                              label={copy.moreActions}
+                              items={[
+                                { label: copy.expenseDetails, onSelect: open },
+                                {
+                                  label: copy.changeCategory,
+                                  onSelect: open,
+                                },
+                                {
+                                  label: copy.sameMerchant,
+                                  disabled: !entry.merchant,
+                                  onSelect: () => {
+                                    setSearchInput(entry.merchant);
+                                    setSearch(entry.merchant);
+                                    setFilter(undefined);
+                                    setPage(1);
+                                  },
+                                },
+                                {
+                                  label: copy.sameCategory,
+                                  onSelect: () => {
+                                    setFilter({
+                                      category: entry.category,
+                                      subcategory: entry.subcategory ?? "",
+                                    });
+                                    setPage(1);
+                                  },
+                                },
+                              ]}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

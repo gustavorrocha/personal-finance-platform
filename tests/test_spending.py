@@ -319,6 +319,15 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
             ("2024-11", "card", "POSTED"): Decimal(25),
             ("2024-11", "card", "PENDING"): Decimal(8),
         }
+        assert page["chart_month"] == "2024-11"
+        october = client.get(path, params={"item": "all", "month": "2024-10"}).json()
+        assert october["month"] == "2024-10" and october["chart_month"] == "2024-11"
+        assert {row["month"] for row in october["history"]} >= {"2024-10", "2024-11"}
+        old = client.get(path, params={"item": "all", "month": "2023-01"}).json()
+        assert old["chart_month"] == "2023-01"
+        assert {row["month"] for row in old["history"]} <= {"2022-12", "2023-01"} | {
+            f"2022-{index:02d}" for index in range(1, 13)
+        }
         assert {row["kind"]: Decimal(row["total"]) for row in page["investments"]} == {
             "contribution": Decimal(100),
             "withdrawal": Decimal(30),
@@ -378,6 +387,21 @@ def test_combined_spending_includes_bank_and_card_and_keeps_edits_scoped(
         assert purchase["bank_category"] == "Office supplies"
         assert purchase["transaction_time"] == "2024-11-10T16:25:00.000000Z"
         assert (purchase["installment_number"], purchase["total_installments"]) == (2, 4)
+        # A pending purchase already counts, so its category can be changed right away.
+        assert purchase["provider_category_id"] == "08080000"
+        tree = {row["name"]: row["id"] for row in page["categories"]}
+        pending_rule = {
+            "item": purchase["item"],
+            "transaction": purchase["id"],
+            "scope": "transaction",
+            "category": tree["Presentes"],
+        }
+        local = {"Origin": "http://127.0.0.1:8080"}
+        assert client.post(path + "/rules", headers=local, json=pending_rule).status_code == 204
+        relabeled = client.get(path, params={"item": "all", "search": "Loja de teste"}).json()
+        assert [(row["subcategory"], row["category_rule"]) for row in relabeled["expenses"]] == [
+            ("Presentes", "transaction")
+        ]
         monkeypatch.setattr(spending, "EXPENSE_PAGE_SIZE", 1)
         first = client.get(path, params={"item": "all"}).json()
         second = client.get(path, params={"item": "all", "page": 2}).json()
@@ -738,7 +762,19 @@ def test_savings_box_outflows_and_recurring_entries_fill_unreported_spending(
         "date": "2024-11-11",
         "description": "Dinheiro retirado Gastos",
     }
-    observe(WHEN + timedelta(days=2), 300, [rent, withdrawal])
+    friend = {
+        "type": "CREDIT",
+        "date": "2024-11-12",
+        "description": "Pix recebido Amigo",
+        "operationType": "PIX",
+        "categoryId": "05070000",
+        "category": "Transfer - PIX",
+    }
+    refunds = [
+        {**friend, "id": str(uuid4()), "amount": 60},
+        {**friend, "id": str(uuid4()), "amount": 40},
+    ]
+    observe(WHEN + timedelta(days=2), 300, [rent, withdrawal, *refunds])
 
     async def execute(query, **parameters):
         return [json.loads(line) for line in silver.execute(query, **parameters).splitlines()]
@@ -805,6 +841,36 @@ def test_savings_box_outflows_and_recurring_entries_fill_unreported_spending(
         november = client.get("/api/spending", params={"item": str(item), "month": "2024-11"})
         totals = {row["bucket"]: Decimal(row["total"]) for row in november.json()["totals"]}
         assert totals[None] == Decimal(1450)
+
+        # Received transfers count only once marked as refunds, and a category can be
+        # set for one transaction without touching others from the same sender.
+        november = client.get("/api/spending", params={"item": str(item), "month": "2024-11"})
+        receipts = november.json()["receipts"]
+        assert sorted(Decimal(row["amount"]) for row in receipts) == [40, 60]
+        for receipt in receipts:
+            decision = {"item": str(item), "transaction": receipt["id"], "decision": "include"}
+            response = client.post("/api/spending/reviews", headers=local, json=decision)
+            assert response.status_code == 204
+        sixty = next(row for row in receipts if Decimal(row["amount"]) == 60)
+        rule = {
+            "item": str(item),
+            "transaction": sixty["id"],
+            "scope": "transaction",
+            "category": categories["Restaurantes e bares"],
+        }
+        assert client.post("/api/spending/rules", headers=local, json=rule).status_code == 204
+        november = client.get("/api/spending", params={"item": str(item), "month": "2024-11"})
+        refunds_listed = {
+            Decimal(row["amount"]): (row["subcategory"], row["category_rule"])
+            for row in november.json()["expenses"]
+            if row["id"] in {receipt["id"] for receipt in receipts}
+        }
+        assert refunds_listed == {
+            Decimal(-60): ("Restaurantes e bares", "transaction"),
+            Decimal(-40): ("", ""),
+        }
+        totals = {row["bucket"]: Decimal(row["total"]) for row in november.json()["totals"]}
+        assert totals[None] == Decimal(1350)
         listed = client.get("/api/spending/manual").json()["entries"]
         assert [(row["description"], row["end"], row["cnpj"]) for row in listed] == [
             ("Aluguel", "2024-11", landlord)
@@ -819,7 +885,7 @@ def test_savings_box_outflows_and_recurring_entries_fill_unreported_spending(
         assert client.get("/api/spending/manual").json()["entries"] == []
 
 
-def test_invested_history_subtracts_later_flows_from_todays_balance(monkeypatch):
+def test_invested_history_subtracts_later_flows_per_component(monkeypatch):
     class Today(date):
         @classmethod
         def today(cls):
@@ -827,18 +893,43 @@ def test_invested_history_subtracts_later_flows_from_todays_balance(monkeypatch)
 
     monkeypatch.setattr(spending, "date", Today)
     balances = [
-        {"currency": "BRL", "source": "positions", "total": "1000"},
-        {"currency": "BRL", "source": "savings_boxes", "total": "500"},
+        {"kind": "positions", "item": "a", "box": "", "currency": "BRL", "total": "1000"},
+        {"kind": "savings_box", "item": "b", "box": "Gastos", "currency": "BRL", "total": "0"},
+        {"kind": "savings_box", "item": "b", "box": "Vazio", "currency": "BRL", "total": "0"},
     ]
     flows = [
-        {"month": "2026-02", "currency": "BRL", "net": "300"},
-        {"month": "2026-03", "currency": "BRL", "net": "-100"},
-        {"month": "2025-12", "currency": "BRL", "net": "50"},
+        {"item": "a", "box": "", "currency": "BRL", "month": "2026-02", "net": "300"},
+        {"item": "a", "box": "", "currency": "BRL", "month": "2025-12", "net": None},
+        # 500 went in, 200 came out; the rest paid a bill straight from the box.
+        {"item": "b", "box": "gastos", "currency": "BRL", "month": "2026-01", "net": "500"},
+        {"item": "b", "box": "gastos", "currency": "BRL", "month": "2026-03", "net": "-200"},
     ]
-    history = spending.invested_history(balances, flows, "2026-04")
-    totals = {row["month"]: Decimal(row["total"]) for row in history}
-    assert len(totals) == 11 and "2026-04" not in totals
-    assert totals["2026-03"] == 1500
-    assert totals["2026-02"] == 1600
-    assert totals["2026-01"] == 1300
-    assert totals["2025-11"] == 1250
+    rows, gaps = spending.invested_history(balances, flows, "2026-04")
+    totals = {(row["name"] or row["item"], row["month"]): Decimal(row["total"]) for row in rows}
+    assert "2026-04" not in {row["month"] for row in rows}
+    assert totals["a", "2026-03"] == 1000 and totals["a", "2026-01"] == 700
+    assert totals["Gastos", "2025-12"] == 0
+    # Walking back from today cannot tell when the bill was paid: it assumes as early as
+    # possible, so January already shows only what was left after it.
+    assert totals["Gastos", "2026-01"] == 200 and totals["Gastos", "2026-03"] == 0
+    assert "Vazio" not in {row["name"] for row in rows}
+    assert gaps == [
+        {"kind": "savings_box", "item": "b", "name": "Gastos", "currency": "BRL", "amount": "300"}
+    ]
+
+
+def test_received_transfers_are_refund_candidates_only():
+    friend = {
+        "type": "CREDIT",
+        "amount": 40,
+        "operationType": "PIX",
+        "categoryId": "05070000",
+        "category": "Transfer - PIX",
+    }
+    assert spending_fields(friend, "tx")["spending_kind"] == "reimbursable"
+    own = {**friend, "categoryId": "04000000", "category": "Same person transfer"}
+    assert spending_fields(own, "tx")["spending_kind"] == ""
+    salary = {**friend, "categoryId": "01000000", "category": "Income"}
+    assert spending_fields(salary, "tx")["spending_kind"] == ""
+    yield_credit = {**friend, "categoryId": "03060000", "category": "Proceeds"}
+    assert spending_fields(yield_credit, "tx")["spending_kind"] == ""

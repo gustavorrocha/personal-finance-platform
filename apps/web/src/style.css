@@ -551,3 +551,233 @@ th:nth-child(3) {
 .show-more {
   margin-top: 0.75rem;
 }
+
+/* Dialogs, menus and notices */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.numeric {
+  text-align: right;
+  white-space: nowrap;
+}
+.icon-button {
+  border: 0;
+  background: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.dialog {
+  width: min(36rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  padding: 0;
+  border: 1px solid #d4ded4;
+  border-radius: 0.6rem;
+  color: #152d25;
+  background: #fff;
+  box-shadow: 0 1rem 3rem rgb(21 45 37 / 25%);
+}
+.dialog::backdrop {
+  background: rgb(21 45 37 / 40%);
+}
+.dialog-body {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.dialog-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.dialog-amount {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0;
+}
+.dialog-amount strong {
+  font-size: 1.5rem;
+}
+.dialog .transaction-details small {
+  display: block;
+}
+.dialog-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+.dialog-facts dt {
+  color: #4b6358;
+}
+.dialog-facts dd {
+  margin: 0;
+}
+.dialog-form,
+.dialog .manual-form {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+.dialog-form label,
+.dialog-form fieldset {
+  display: grid;
+  gap: 0.35rem;
+}
+.dialog-form fieldset {
+  margin: 0;
+  border: 1px solid #d4ded4;
+  border-radius: 0.35rem;
+}
+.dialog-form label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.menu {
+  position: relative;
+  display: inline-block;
+}
+.menu > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.menu > summary::-webkit-details-marker {
+  display: none;
+}
+.menu > summary:hover,
+.menu[open] > summary {
+  border-color: #a4b6a9;
+  background: #edf2ec;
+}
+.menu-items {
+  position: absolute;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 15rem;
+  margin-top: 0.25rem;
+  padding: 0.3rem;
+  border: 1px solid #d4ded4;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 0.5rem 1.5rem rgb(21 45 37 / 18%);
+}
+.menu-items button {
+  border: 0;
+  text-align: left;
+  border-radius: 0.3rem;
+}
+.menu-items button:hover:not(:disabled) {
+  background: #edf2ec;
+}
+.menu-items button:disabled {
+  color: #8fa396;
+  cursor: default;
+}
+.category-chip {
+  padding: 0.2rem 0.6rem;
+  border-color: #cddccd;
+  border-radius: 999px;
+  background: #edf2ec;
+  font-size: 0.9rem;
+  text-align: left;
+}
+.category-chip.empty {
+  border-style: dashed;
+  background: #fff;
+  color: #4b6358;
+}
+.category-chip:hover {
+  border-color: #0a6849;
+}
+.expense-table td {
+  vertical-align: top;
+}
+.toast-region {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  max-width: min(24rem, calc(100% - 2rem));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.6rem 0.6rem 1rem;
+  border-radius: 0.5rem;
+  color: #fff;
+  background: #183b2f;
+  box-shadow: 0 0.5rem 1.5rem rgb(21 45 37 / 25%);
+}
+.toast.error {
+  background: #8f2d22;
+}
+.toast .icon-button {
+  color: inherit;
+}
+@media (max-width: 640px) {
+  .menu-items {
+    min-width: 12rem;
+  }
+  .dialog-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A new result is loading; the previous one stays in place. */
+.refreshing .panel,
+.refreshing .summary {
+  opacity: 0.6;
+  transition: opacity 0.15s ease-in;
+}
+
+/* Categorical series in fixed order (validated: legend and table view required). */
+.swatch.series-1 {
+  background: #2a78d6;
+}
+.swatch.series-2 {
+  background: #eb6834;
+}
+.swatch.series-3 {
+  background: #1baf7a;
+}
+.swatch.series-4 {
+  background: #eda100;
+}
+.swatch.series-5 {
+  background: #e87ba4;
+}
+.swatch.series-6 {
+  background: #008300;
+}
+
+.notice {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid #eda100;
+  border-radius: 0.35rem;
+  background: #fdf6e3;
+}
+.notice p,
+.notice ul {
+  margin: 0.25rem 0;
+}

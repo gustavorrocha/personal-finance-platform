@@ -191,5 +191,22 @@
   "clearFilter": "Show all",
   "showExpensesOf": "Show the month's expenses of",
   "investedEvolution": "Invested wealth over time",
-  "investedEvolutionHelp": "Estimated invested money at the end of each month: today's reported balances (positions and savings boxes), minus the contributions and plus the withdrawals made after that month. Yield and market changes of past months are not known, so earlier months show the money put in rather than its value at the time."
+  "investedEvolutionHelp": "Estimated invested money at the end of each month, by connection positions and savings box: today's reported balances, minus the contributions and plus the withdrawals made after that month. Past yield and market changes are not known, so earlier months show money put in rather than its value then.",
+  "expenseDetails": "Expense details",
+  "close": "Close",
+  "categoryNotEditable": "Count this transaction as an expense or refund first to set its category.",
+  "moreActions": "More actions",
+  "changeCategory": "Change category",
+  "sameMerchant": "Expenses from this merchant",
+  "sameCategory": "This month in this category",
+  "investedGapsTitle": "Money left without a reported withdrawal.",
+  "investedGapsHelp": "These savings boxes received more than they hold and returned: the rest paid bills straight from the box, which the bank does not report. Until each payment is registered (as a manual entry paid from the box), earlier months show these boxes at zero.",
+  "otherComponents": "Other",
+  "scopeTransaction": "Only this transaction",
+  "rule_transaction": "Rule: this transaction",
+  "receiptsTitle": "Transfers received",
+  "receiptsHelp": "Transfers you received this month. Count one as a refund when it pays back part of an expense, such as a friend's share of a dinner: it then reduces the subcategory you choose.",
+  "countAsRefund": "Count as refund",
+  "notRefund": "Not a refund",
+  "decidedReceipts": "Decided transfers"
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { categoryPath, categoryTree, type CategoryNode } from "./categories";
 import { formatMoney, messages, type Locale } from "./locale";
+import { Dialog, Menu } from "./ui";
 
 type Entry = {
   id: string;
@@ -44,6 +45,8 @@ export function ManualExpenses({
   const copy = messages[locale];
   const [entries, setEntries] = useState<Entry[]>([]);
   const [editing, setEditing] = useState<Entry>();
+  const [formOpen, setFormOpen] = useState(false);
+  const [formItem, setFormItem] = useState("");
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<"manualSaved" | "manualError">();
@@ -70,6 +73,7 @@ export function ManualExpenses({
       await action();
       setStatus("manualSaved");
       setEditing(undefined);
+      setFormOpen(false);
       setRevision((value) => value + 1);
       onChange();
     } catch {
@@ -157,22 +161,25 @@ export function ManualExpenses({
                       : copy.uncategorized}
                   </td>
                   <td>
-                    <div className="review-actions">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setEditing(entry)}
-                      >
-                        {copy.editManual}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => archive(entry)}
-                      >
-                        {copy.archiveCategory}
-                      </button>
-                    </div>
+                    <Menu
+                      label={copy.moreActions}
+                      items={[
+                        {
+                          label: copy.editManual,
+                          disabled: busy,
+                          onSelect: () => {
+                            setEditing(entry);
+                            setFormItem("");
+                            setFormOpen(true);
+                          },
+                        },
+                        {
+                          label: copy.archiveCategory,
+                          disabled: busy,
+                          onSelect: () => archive(entry),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -180,138 +187,160 @@ export function ManualExpenses({
           </table>
         </div>
       )}
-      <form
-        className="manual-form"
-        key={editing?.id ?? "new"}
-        onSubmit={submit}
-        aria-label={editing ? copy.editManual : copy.addManual}
+      <button
+        type="button"
+        disabled={!connections.length}
+        onClick={() => {
+          setEditing(undefined);
+          setFormItem("");
+          setFormOpen(true);
+        }}
       >
-        <label>
-          {copy.manualDescription}
-          <input
-            name="description"
-            required
-            maxLength={80}
-            defaultValue={editing?.description}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          {copy.amount}
-          <input
-            name="amount"
-            required
-            inputMode="decimal"
-            pattern="\d+([.,]\d{1,2})?"
-            defaultValue={editing?.amount.replace(/(\.\d\d)\d*$/, "$1")}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          {copy.manualDay}
-          <input
-            name="day"
-            type="number"
-            min={1}
-            max={31}
-            required
-            defaultValue={editing?.day ?? 5}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          {copy.connection}
-          <select
-            name="item"
-            required
-            defaultValue={editing?.item}
-            disabled={busy}
-          >
-            {connections.map((connection) => (
-              <option key={connection.id} value={connection.id}>
-                {connection.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {copy.category}
-          <select
-            name="category"
-            defaultValue={editing?.category ?? ""}
-            disabled={busy}
-          >
-            <option value="">{copy.uncategorized}</option>
-            {tree.map((top) => (
-              <optgroup key={top.id} label={top.name}>
-                <option value={top.id}>
-                  {top.name} · {copy.wholeCategory}
-                </option>
-                {top.children.map((child) => (
-                  <option key={child.id} value={child.id}>
-                    {child.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
-        <label>
-          {copy.manualStart}
-          <input
-            name="start"
-            type="month"
-            required
-            defaultValue={editing?.start}
-            disabled={busy}
-          />
-        </label>
-        <label className="checkbox">
-          <input
-            name="recurring"
-            type="checkbox"
-            defaultChecked={editing ? editing.end !== editing.start : true}
-            disabled={busy}
-          />
-          {copy.manualRecurring}
-        </label>
-        <label>
-          {copy.manualEnd}
-          <input
-            name="end"
-            type="month"
-            defaultValue={
-              editing?.end === editing?.start ? "" : (editing?.end ?? "")
-            }
-            disabled={busy}
-          />
-        </label>
-        <label>
-          {copy.manualCnpj}
-          <input
-            name="cnpj"
-            inputMode="numeric"
-            maxLength={18}
-            pattern="[\d./-]*"
-            defaultValue={editing?.cnpj}
-            disabled={busy}
-          />
-        </label>
-        <div className="review-actions">
-          <button type="submit" disabled={busy || !connections.length}>
-            {editing ? copy.saveCategory : copy.addManual}
-          </button>
-          {editing && (
-            <button
-              type="button"
+        {copy.addManual}
+      </button>
+      <Dialog
+        open={formOpen}
+        title={editing ? copy.editManual : copy.addManual}
+        closeLabel={copy.close}
+        onClose={() => {
+          setEditing(undefined);
+          setFormOpen(false);
+        }}
+      >
+        <form
+          className="manual-form"
+          key={editing?.id ?? "new"}
+          onSubmit={submit}
+          aria-label={editing ? copy.editManual : copy.addManual}
+        >
+          <label>
+            {copy.manualDescription}
+            <input
+              name="description"
+              required
+              maxLength={80}
+              defaultValue={editing?.description}
               disabled={busy}
-              onClick={() => setEditing(undefined)}
+            />
+          </label>
+          <label>
+            {copy.amount}
+            <input
+              name="amount"
+              required
+              inputMode="decimal"
+              pattern="\d+([.,]\d{1,2})?"
+              defaultValue={editing?.amount.replace(/(\.\d\d)\d*$/, "$1")}
+              disabled={busy}
+            />
+          </label>
+          <label>
+            {copy.manualDay}
+            <input
+              name="day"
+              type="number"
+              min={1}
+              max={31}
+              required
+              defaultValue={editing?.day ?? 5}
+              disabled={busy}
+            />
+          </label>
+          <label>
+            {copy.connection}
+            <select
+              name="item"
+              required
+              value={formItem || editing?.item || connections[0]?.id || ""}
+              onChange={(event) => setFormItem(event.target.value)}
+              disabled={busy}
             >
-              {copy.cancelEdit}
+              {connections.map((connection) => (
+                <option key={connection.id} value={connection.id}>
+                  {connection.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {copy.category}
+            <select
+              name="category"
+              defaultValue={editing?.category ?? ""}
+              disabled={busy}
+            >
+              <option value="">{copy.uncategorized}</option>
+              {tree.map((top) => (
+                <optgroup key={top.id} label={top.name}>
+                  <option value={top.id}>
+                    {top.name} · {copy.wholeCategory}
+                  </option>
+                  {top.children.map((child) => (
+                    <option key={child.id} value={child.id}>
+                      {child.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label>
+            {copy.manualStart}
+            <input
+              name="start"
+              type="month"
+              required
+              defaultValue={editing?.start}
+              disabled={busy}
+            />
+          </label>
+          <label className="checkbox">
+            <input
+              name="recurring"
+              type="checkbox"
+              defaultChecked={editing ? editing.end !== editing.start : true}
+              disabled={busy}
+            />
+            {copy.manualRecurring}
+          </label>
+          <label>
+            {copy.manualEnd}
+            <input
+              name="end"
+              type="month"
+              defaultValue={
+                editing?.end === editing?.start ? "" : (editing?.end ?? "")
+              }
+              disabled={busy}
+            />
+          </label>
+          <label>
+            {copy.manualCnpj}
+            <input
+              name="cnpj"
+              inputMode="numeric"
+              maxLength={18}
+              pattern="[\d./-]*"
+              defaultValue={editing?.cnpj}
+              disabled={busy}
+            />
+          </label>
+          <div className="review-actions">
+            <button type="submit" disabled={busy || !connections.length}>
+              {editing ? copy.saveCategory : copy.addManual}
             </button>
-          )}
-        </div>
-      </form>
+            {editing && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setEditing(undefined)}
+              >
+                {copy.cancelEdit}
+              </button>
+            )}
+          </div>
+        </form>
+      </Dialog>
     </section>
   );
 }
