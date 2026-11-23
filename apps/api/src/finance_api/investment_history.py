@@ -11,10 +11,15 @@ positions that follow a curve, the daily yield of that curve:
   days (savings boxes included);
 - fixed rate (CDB, LCA, LCI, not Treasury): (1 + annual rate) ** (1 / 252) per business day.
 
-Other positions (Treasury marked to market, inflation-linked, funds, equities) walk back
-through reported flows only, so those days show money put in rather than market value.
+Positions with market prices follow the price from day to day instead: Tesouro Direto bonds
+the morning redemption price published by the Tesouro, funds the quota in the CVM daily
+report, stocks and ETFs the B3 closing price (dividends arrive as account transactions, not
+in the position). Positions without either walk back through reported flows only, so those
+days show money put in rather than market value.
 """
 
+import re
+from bisect import bisect_right
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -62,8 +67,44 @@ def number(value) -> Decimal | None:
     return Decimal(value) if value not in (None, "") else None
 
 
-def daily_yield(position: dict, rates: dict[str, dict[date, Decimal]]):
+def asset_key(position: dict) -> str | None:
+    """Key of the position's market prices: a Tesouro Direto bond's title and due date, a
+    fund's CNPJ digits or a listed asset's ticker."""
+    title = re.match(r"(Tesouro .+?) \d{4}\b", position.get("name") or "")
+    if position.get("subtype") == "TREASURY" and title and position.get("due_date"):
+        return f"{title[1]}|{position['due_date']}"
+    symbol = position.get("symbol") or ""
+    digits = re.sub(r"\D", "", symbol)
+    if position.get("type") == "MUTUAL_FUND" and len(digits) == 14:
+        return digits
+    if position.get("type") in {"EQUITY", "ETF"} and re.fullmatch(r"[A-Za-z0-9]{4,12}", symbol):
+        return symbol.upper()
+    return None
+
+
+def price_yield(prices: dict[date, Decimal]):
+    """Fraction gained from a day to the next one, at the last price on or before each."""
+    days = sorted(prices)
+
+    def price(day: date) -> Decimal | None:
+        index = bisect_right(days, day)
+        return prices[days[index - 1]] if index else None
+
+    def grow(day: date) -> Decimal:
+        today, following = price(day), price(day + DAY)
+        return following / today - 1 if today and following else Decimal(0)
+
+    return grow
+
+
+def daily_yield(
+    position: dict,
+    rates: dict[str, dict[date, Decimal]],
+    prices: dict[date, Decimal] | None = None,
+):
     """Function of a day returning the fraction the position earns over that day."""
+    if prices:
+        return price_yield(prices)
     indexer = (position.get("indexer") or "").upper()
     cdi = rates.get("CDI", {})
     last = max(cdi, default=None)
@@ -74,10 +115,10 @@ def daily_yield(position: dict, rates: dict[str, dict[date, Decimal]]):
 
     if indexer in {"CDI", "SELIC"}:
         series = rates.get(indexer, {})
-        newest = series[max(series)] if series else Decimal(0)
+        newest = max(series, default=None)
         share = number(position.get("rate")) or Decimal(100)
         return lambda day: (
-            series.get(day, newest if day > max(series, default=day) else 0) * share / 10000
+            series.get(day, series[newest] if newest and day > newest else 0) * share / 10000
             if business(day)
             else Decimal(0)
         )
@@ -94,7 +135,11 @@ def daily_yield(position: dict, rates: dict[str, dict[date, Decimal]]):
 
 
 def daily_values(
-    rows: list[dict], own: list[tuple[date, Decimal]], start: date, rates: dict
+    rows: list[dict],
+    own: list[tuple[date, Decimal]],
+    start: date,
+    rates: dict,
+    prices: dict[date, Decimal] | None = None,
 ) -> tuple[dict[date, Decimal], Decimal]:
     """Value of one position at the end of each day from `start`, and its lowest walk.
 
@@ -102,7 +147,7 @@ def daily_values(
     negative here (unreported withdrawals); callers clamp them.
     """
     latest = rows[-1]
-    grow = daily_yield(latest, rates)
+    grow = daily_yield(latest, rates, prices)
     box = latest["type"] == "SAVINGS_BOX"
     # Investment balances arrive with the previous day's close; savings boxes are live.
     lag = timedelta(0) if box else DAY
@@ -151,11 +196,13 @@ def invested_history(
     classes: list[dict],
     month: str,
     rates: list[dict] | None = None,
+    prices: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """history: position, observed_on, type, subtype, indexer, rate, fixed_rate,
     purchase_date, name, currency, balance and gross (one per day).
     flows: position, date, net (purchases and contributions positive).
     rates: series (CDI, SELIC), day, value (daily percentage).
+    prices: asset (see asset_key), day, price.
     Returns rows (month, currency, key = class id or "", name, total) for the 12 months up
     to `month`, and gaps: positions whose walk back fell below zero, such as a savings box
     that paid a bill without a reported withdrawal.
@@ -172,6 +219,9 @@ def invested_history(
     series: dict[str, dict[date, Decimal]] = {}
     for row in rates or []:
         series.setdefault(row["series"], {})[date.fromisoformat(row["day"])] = Decimal(row["value"])
+    quotes: dict[str, dict[date, Decimal]] = {}
+    for row in prices or []:
+        quotes.setdefault(row["asset"], {})[date.fromisoformat(row["day"])] = Decimal(row["price"])
     names = {row["id"]: row["name"] for row in classes}
     snapshots: dict[str, list[dict]] = {}
     for row in sorted(history, key=lambda row: row["observed_on"]):
@@ -186,7 +236,9 @@ def invested_history(
     for position, rows in snapshots.items():
         latest = rows[-1]
         key = position_class(latest, assigned, set(names))
-        values, lowest = daily_values(rows, moves.get(position, []), start, series)
+        values, lowest = daily_values(
+            rows, moves.get(position, []), start, series, quotes.get(asset_key(latest) or "")
+        )
         for slot in months:
             end = month_end(slot, today)
             value = values.get(end, Decimal(0))
