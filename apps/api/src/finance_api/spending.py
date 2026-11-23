@@ -257,7 +257,9 @@ async def spending(
     )
     positions = await dashboard_query(
         "SELECT toString(position_key) AS position, toString(observed_on) AS observed_on, "
-        "type, indexer, name, currency, toString(balance) AS balance "
+        "type, subtype, indexer, toString(rate) AS rate, toString(fixed_rate) AS fixed_rate, "
+        "toString(purchase_date) AS purchase_date, name, currency, "
+        "toString(balance) AS balance, toString(gross) AS gross "
         f"FROM analytics.investment_position_history WHERE {scope} FORMAT JSONEachRow",
         **filters,
     )
@@ -285,6 +287,11 @@ async def spending(
         {row["position"]: row["class"] for row in assigned},
         classes,
         result["chart_month"],
+        await dashboard_query(
+            "SELECT series, toString(day) AS day, toString(value) AS value FROM "
+            "(SELECT * FROM analytics.market_rates WHERE series IN ('CDI', 'SELIC') "
+            "AND day >= today() - 800) FORMAT JSONEachRow"
+        ),
     )
     search = search.strip()
     expense_filters = dict(filters, offset=str((page - 1) * EXPENSE_PAGE_SIZE))

@@ -191,7 +191,7 @@
   "clearFilter": "Show all",
   "showExpensesOf": "Show the month's expenses of",
   "investedEvolution": "Invested wealth over time",
-  "investedEvolutionHelp": "Invested money at the end of each month, by investment class. Months with stored daily balances use the last one; earlier months start from the next stored balance, minus the purchases and plus the sales reported in between, so they show money put in rather than its past yield and market value.",
+  "investedEvolutionHelp": "Invested money at the end of each month, by investment class, gross of income tax. Days without a stored balance start from the nearest one, through the purchases and sales reported in between and, for CDI, Selic and fixed-rate positions (savings boxes included), the daily yield of their rate. Treasury bonds, inflation-linked positions, funds and equities show money put in on those days, not market value.",
   "expenseDetails": "Expense details",
   "close": "Close",
   "categoryNotEditable": "Count this transaction as an expense or refund first to set its category.",

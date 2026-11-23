@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from finance_api import investment_history
 from finance_api.investment_history import (
     CDI,
@@ -72,8 +73,60 @@ def test_history_uses_stored_balances_walks_back_before_them_and_groups_by_class
     assert totals["ETF renda fixa", "2026-10"] == 700
     assert totals["Renda fixa - CDI", "2026-08"] == 0
     assert totals["Renda fixa - CDI", "2026-10"] == 50
-    assert gaps == [{"name": "Gastos", "currency": "BRL", "amount": "350"}]
+    assert gaps == [{"name": "Gastos", "currency": "BRL", "amount": "350.00"}]
     # A deleted class falls back to the automatic one.
     rows, _ = invested_history(history, flows, {"etf": "gone"}, CLASSES, "2026-11")
     assert "ETF renda fixa" not in {row["name"] for row in rows}
     assert "" in {row["key"] for row in rows}
+
+
+def test_curve_positions_earn_their_rate_on_business_days_only(monkeypatch):
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 23)
+
+    monkeypatch.setattr(investment_history, "date", Today)
+    # 1% a business day keeps the arithmetic readable; Friday 2026-10-30 to Monday 11-02
+    # earns once, and the holiday 11-20 (absent from the series) earns nothing.
+    business = [
+        date(2026, 10, 1) + timedelta(days=n)
+        for n in range(60)
+        if (date(2026, 10, 1) + timedelta(days=n)).weekday() < 5
+        and date(2026, 10, 1) + timedelta(days=n) != date(2026, 11, 20)
+    ]
+    rates = [{"series": "CDI", "day": str(day), "value": "1"} for day in business]
+    lca = snapshot("lca", "2026-11-19", "1000", indexer="CDI", name="LCA") | {
+        "rate": "50",  # 50% of the CDI: 0.5% a business day
+        "purchase_date": "2026-11-03",
+        "gross": "1000",
+    }
+    cdb = snapshot("cdb", "2026-11-19", "900", indexer=None, name="CDB") | {
+        "subtype": "CDB",
+        "fixed_rate": "10",
+        "gross": "1000",  # balance net of income tax; the gross one is valued
+    }
+    values, _ = investment_history.daily_values(
+        [lca], [], date(2026, 10, 31), {"CDI": {day: Decimal(1) for day in business}}
+    )
+    # Observed on 11-19, the balance is the close of 11-18.
+    days_back = sum(date(2026, 11, 3) <= day < date(2026, 11, 18) for day in business)
+    assert values[date(2026, 11, 3)] == pytest.approx(Decimal(1000) / Decimal("1.005") ** days_back)
+    assert values[date(2026, 11, 2)] == 0  # before the purchase
+    # Forward to today: 11-18 and 19 earn, 11-20 is a holiday, 11-21 and 22 a weekend.
+    assert values[date(2026, 11, 23)] == pytest.approx(Decimal(1000) * Decimal("1.005") ** 2)
+    rows, gaps = invested_history(
+        [lca, cdb],
+        [],
+        {},
+        CLASSES + [{"id": PREFIXED, "name": "Renda fixa - Pré"}],
+        "2026-11",
+        rates,
+    )
+    totals = {(row["name"], row["month"]): Decimal(row["total"]) for row in rows}
+    step = Decimal(1.1 ** (1 / 252))
+    du = sum(date(2026, 10, 31) <= day < date(2026, 11, 18) for day in business)
+    assert totals["Renda fixa - Pré", "2026-10"] == pytest.approx(
+        Decimal(1000) / step**du, abs=Decimal("0.01")
+    )
+    assert gaps == []
