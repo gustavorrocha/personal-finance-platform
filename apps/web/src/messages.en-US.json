@@ -191,7 +191,7 @@
   "clearFilter": "Show all",
   "showExpensesOf": "Show the month's expenses of",
   "investedEvolution": "Invested wealth over time",
-  "investedEvolutionHelp": "Estimated invested money at the end of each month, by connection positions and savings box: today's reported balances, minus the contributions and plus the withdrawals made after that month. Past yield and market changes are not known, so earlier months show money put in rather than its value then.",
+  "investedEvolutionHelp": "Invested money at the end of each month, by investment class. Months with stored daily balances use the last one; earlier months start from the next stored balance, minus the purchases and plus the sales reported in between, so they show money put in rather than its past yield and market value.",
   "expenseDetails": "Expense details",
   "close": "Close",
   "categoryNotEditable": "Count this transaction as an expense or refund first to set its category.",
@@ -202,7 +202,7 @@
   "paidFromSavingsBox": "Paid from savings box",
   "notFromSavingsBox": "Not from a savings box",
   "investedGapsTitle": "Money left without a reported withdrawal.",
-  "investedGapsHelp": "These savings boxes received more than they hold and returned: the rest paid bills straight from the box, which the bank does not report. Until each payment is registered (as a manual entry paid from the box), earlier months show these boxes at zero.",
+  "investedGapsHelp": "These positions received more than they hold and returned: the rest left without a reported withdrawal, such as bills paid straight from a savings box. Until each payment is registered (as a manual entry paid from the box), earlier months show them at zero.",
   "otherComponents": "Other",
   "scopeTransaction": "Only this transaction",
   "rule_transaction": "Rule: this transaction",
@@ -222,5 +222,13 @@
   "estimatedDrop": "Estimated",
   "dropWindow": "balance fell between {start} and {end}",
   "estimatedHelp": "before the first stored balance",
-  "acceptSuggestionTitle": "Record payment from savings box"
+  "acceptSuggestionTitle": "Record payment from savings box",
+  "investmentClasses": "Investment classes",
+  "investmentClassesHelp": "Each position starts in an automatic class from its type and indexer. Choose another class for a position, or create, rename and delete classes; a position in a deleted class returns to its automatic class.",
+  "investmentClass": "Class",
+  "newInvestmentClass": "New class",
+  "deleteInvestmentClass": "Delete",
+  "deleteInvestmentClassConfirm": "Delete the class {name}? Its positions return to their automatic class.",
+  "automaticClass": "Automatic ({name})",
+  "unclassifiedInvestment": "Unclassified"
 }

@@ -167,14 +167,26 @@ in it. **Recent expenses** shows the latest 10; **Show more** opens the full,
 searchable list.
 
 **Invested wealth over time** stacks, for each of the last 12 months, the
-positions of each connection and each savings box: today's reported balances of positions and savings boxes,
-minus the contributions and plus the withdrawals made after each month.
-Providers report only current balances, so past yield and market changes are
-not included; earlier months show money put in rather than its value then. A
-savings box that received more than it holds and returned lost the rest without
-a reported withdrawal; the chart warns about it and draws the box at zero where
-the estimate would be negative, until those payments are registered as manual
-entries paid from the box. Card purchases count in
+invested money of each investment class. Providers report only current
+balances, so each sync stores the balance of every position and savings box of
+that day. A month with stored balances uses its last one. Earlier months start
+from the next stored balance, minus the purchases and plus the sales reported
+for each position (contributions and withdrawals for a savings box) in between,
+so they show money put in rather than past yield and market value. A position
+that received more than it holds and returned lost the rest without a reported
+withdrawal, such as a bill paid straight from a savings box; the chart warns
+about it and draws it at zero where the estimate would be negative, until those
+payments are registered as manual entries paid from the box.
+
+**Investment classes** (on the **Categories** page) start as Renda fixa -
+Inflação, Renda fixa - CDI, Renda fixa - Pré, Cotas de fundos, ETF renda fixa
+and ETF ações. Each position gets an automatic class: savings boxes and CDI or
+Selic indexers are CDI, IPCA, IGP-M and INPC are inflation, other fixed income
+is prefixed, mutual funds are fund shares and equities are stock ETFs. Choose
+another class for a position, or create, rename and delete classes; a position
+in a deleted class returns to its automatic class, or to unclassified.
+
+Card purchases count in
 the month of their transaction date, not the month of their bill.
 
 **Net invested** shows, for the same month, contributions minus withdrawals,
