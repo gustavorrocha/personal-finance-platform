@@ -60,6 +60,7 @@ def configure(private: Path) -> None:
         "<query>GRANT SELECT ON analytics.investment_position_history</query>"
         "<query>GRANT SELECT ON analytics.investment_position_movements</query>"
         "<query>GRANT SELECT ON analytics.market_rates</query>"
+        "<query>GRANT SELECT ON analytics.market_prices</query>"
         "<query>GRANT INSERT ON core.investment_classes</query>"
         "<query>GRANT INSERT ON core.investment_class_assignments</query>"
         "<query>GRANT SYSTEM RELOAD DICTIONARY ON *.*</query>"

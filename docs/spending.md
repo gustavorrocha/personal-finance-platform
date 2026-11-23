@@ -176,17 +176,30 @@ through the purchases and sales reported for each position (contributions and
 withdrawals for a savings box) and, for positions that follow a curve, its daily
 yield on business days: the CDI or Selic times the contracted percentage
 (savings boxes included), or the contracted fixed rate over 252 business days
-for CDBs, LCAs and LCIs. Treasury bonds, inflation-linked positions, funds and
-equities have no curve yet, so their earlier days show money put in rather than
-market value. A position that received more than it holds and returned lost the
+for CDBs, LCAs and LCIs. Tesouro Direto bonds follow the morning redemption
+price the Tesouro publishes (PU Venda Manhã), matched by title and due date, so
+they are marked to market; on the purchase day they show about 1% less than
+paid, the spread between buying and redemption prices. Funds follow their quota
+in the CVM daily report (matched by CNPJ; subclasses are skipped as ambiguous)
+and stocks and ETFs their B3 closing price (matched by ticker; dividends arrive
+as account transactions, not in the position). A position without a curve or a
+price, such as an ETF that B3's files do not list, shows money put in on those
+days rather than market value. A position that received more than it holds and returned lost the
 rest without a reported withdrawal, such as a bill paid straight from a savings
 box; the chart warns about it and draws it at zero where the estimate would be
 negative, until those payments are registered as manual entries paid from the
 box.
 
 `finance market-sync` downloads the last ten years of the public CDI, Selic and
-IPCA series from the Banco Central (SGS) into `core.market_rates`. It downloads
-whole series, never anything tied to a holding. Run it after a sync; days
+IPCA series from the Banco Central (SGS) into `core.market_rates`, and of every
+Tesouro Direto bond's prices from the Tesouro Transparente into
+`core.market_prices`, together with the last 13 months of the CVM daily fund
+report and B3 historical quotes, keeping only the funds and tickers held. Those
+are monthly or daily files for the whole market, never anything tied to a
+holding. `core.market_downloads` remembers the files already read for the
+current set of holdings, so later runs fetch only new files (and the CVM's last
+two months, which it still revises); buying a new fund or ticker fetches its
+history again. Run it after a sync; days
 without a published rate yet reuse the latest one.
 
 **Investment classes** (on the **Categories** page) start as Renda fixa -

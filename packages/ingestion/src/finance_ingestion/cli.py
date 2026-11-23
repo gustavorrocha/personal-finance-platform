@@ -16,7 +16,7 @@ from finance_pluggy.client import AuditError
 from finance_pluggy.coverage import audit_from_environment, configured_client, identifier
 
 from .collection import collect, entity_key, item_key
-from .market import sync_rates
+from .market import sync_market
 from .silver import SilverWarehouse
 from .spending_demo import load_account_demo, load_demo, load_investment_demo
 from .synthetic import capture_synthetic
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     audit.add_argument("--redact", action="store_true", help="Redaction is always enabled")
     sync_parser = commands.add_parser("sync", help="Collect existing provider items")
     sync_parser.add_argument("--full", action="store_true", help="Read full available history")
-    commands.add_parser("market-sync", help="Download public CDI, Selic and IPCA rates")
+    commands.add_parser("market-sync", help="Download public rates and Tesouro, fund and B3 prices")
     commands.add_parser("demo-spending", help="Load a synthetic spending connection")
     commands.add_parser("demo-accounts", help="Load synthetic account balances")
     commands.add_parser("demo-investments", help="Load synthetic investment positions")
@@ -152,8 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "market-sync":
         try:
-            with httpx.Client(timeout=30, trust_env=False) as http:
-                summary = sync_rates(docker_sql, http)
+            with httpx.Client(timeout=120, trust_env=False) as http:
+                summary = sync_market(docker_sql, http)
         except (httpx.HTTPError, ValueError, RuntimeError, subprocess.SubprocessError):
             print("Rate download failed; details suppressed.", file=sys.stderr)
             return 1

@@ -130,3 +130,27 @@ def test_curve_positions_earn_their_rate_on_business_days_only(monkeypatch):
         Decimal(1000) / step**du, abs=Decimal("0.01")
     )
     assert gaps == []
+
+
+def test_treasury_bonds_follow_their_price_from_day_to_day():
+    bond = snapshot("ltn", "2026-11-19", "900", indexer=None, name="Tesouro Prefixado 2032 (LTN)")
+    bond |= {"subtype": "TREASURY", "due_date": "2032-01-01", "gross": "1000"}
+    assert investment_history.asset_key(bond) == "Tesouro Prefixado|2032-01-01"
+    # Friday 11-13 at 400, Monday 11-16 at 500 (no weekend prices), 11-18 at 500.
+    prices = {date(2026, 11, 13): Decimal(400), date(2026, 11, 16): Decimal(500)}
+    prices[date(2026, 11, 18)] = Decimal(500)
+    # 100 bought on Monday: before it, 900 at Monday's 500 was 720 at Friday's 400.
+    flows = [(date(2026, 11, 16), Decimal(100))]
+    values, _ = investment_history.daily_values([bond], flows, date(2026, 11, 1), {}, prices)
+    assert values[date(2026, 11, 18)] == 1000  # observed 11-19: the 11-18 close
+    assert values[date(2026, 11, 16)] == 1000
+    assert values[date(2026, 11, 15)] == 720  # weekend at Friday's price
+    assert values[date(2026, 11, 13)] == 720
+    assert values[date(2026, 11, 12)] == 720  # before the first price, no change
+
+
+def test_funds_and_listed_assets_are_keyed_by_cnpj_and_ticker():
+    fund = {"type": "MUTUAL_FUND", "symbol": "12.345.678/0001-90"}
+    assert investment_history.asset_key(fund) == "12345678000190"
+    assert investment_history.asset_key({"type": "EQUITY", "symbol": "etfx11"}) == "ETFX11"
+    assert investment_history.asset_key({"type": "EQUITY", "symbol": "BR STN"}) is None

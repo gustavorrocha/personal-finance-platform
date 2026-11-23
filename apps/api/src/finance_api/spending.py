@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from .investment_history import invested_history
+from .investment_history import asset_key, invested_history
 from .local_classifier import (
     BATCH_LIMIT,
     MODEL_TIMEOUT,
@@ -116,6 +116,12 @@ class SuggestionRequest(BaseModel):
 
 def month_start(index: int) -> date:
     return date(index // 12, index % 12 + 1, 1)
+
+
+def clickhouse_array(values) -> str:
+    """An Array(String) query parameter."""
+    escaped = (value.replace("\\", "\\\\").replace("'", "\\'") for value in sorted(values))
+    return "[" + ",".join(f"'{value}'" for value in escaped) + "]"
 
 
 async def dashboard_query(query: str, **parameters: str) -> list[dict]:
@@ -259,7 +265,8 @@ async def spending(
         "SELECT toString(position_key) AS position, toString(observed_on) AS observed_on, "
         "type, subtype, indexer, toString(rate) AS rate, toString(fixed_rate) AS fixed_rate, "
         "toString(purchase_date) AS purchase_date, name, currency, "
-        "toString(balance) AS balance, toString(gross) AS gross "
+        "toString(balance) AS balance, toString(gross) AS gross, "
+        "toString(due_date) AS due_date, symbol "
         f"FROM analytics.investment_position_history WHERE {scope} FORMAT JSONEachRow",
         **filters,
     )
@@ -291,6 +298,12 @@ async def spending(
             "SELECT series, toString(day) AS day, toString(value) AS value FROM "
             "(SELECT * FROM analytics.market_rates WHERE series IN ('CDI', 'SELIC') "
             "AND day >= today() - 800) FORMAT JSONEachRow"
+        ),
+        await dashboard_query(
+            "SELECT asset, toString(day) AS day, toString(price) AS price FROM "
+            "(SELECT * FROM analytics.market_prices WHERE asset IN {assets:Array(String)} "
+            "AND day >= today() - 800) FORMAT JSONEachRow",
+            assets=clickhouse_array({asset_key(row) for row in positions} - {None}),
         ),
     )
     search = search.strip()
