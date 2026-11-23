@@ -82,22 +82,33 @@ refund** subtracts one from spending, such as a friend's share of a dinner, and
 asks for its subcategory; **Not a refund** hides it among the decided ones.
 
 **Likely paid from a savings box** turns money that left a box into suggested
-payments. The evidence is always a box balance falling without a reported
-withdrawal:
+payments. The evidence is always money missing from a box without a reported
+withdrawal. Yield follows the Banco Central's daily CDI times the box's
+percentage on business days (without CDI data, a calendar-day rate implied by a
+box whose balance only grew):
 
-- **Observed:** since the box's first stored balance, each drop between two
-  syncs is the previous balance plus reported contributions, minus reported
-  withdrawals, plus the yield expected over those days, minus the new balance.
-  Providers report only the current balance, so one sync a day gives a one-day
-  window. It is suggested when a
-  monthly bill (same CNPJ, stable amount) fits that amount (within 10% of its
-  observed range) and its usual day falls between the syncs; other drops stay in
-  **Debit review**.
+- **Observed:** since the box's first stored balance, what left it between two
+  syncs is the previous balance plus its yield over those business days, plus
+  reported contributions, minus reported withdrawals, minus the new balance
+  (`analytics.savings_box_outflows`, with the yield in `expected_yield`). A
+  payment smaller than the yield credited meanwhile still counts, even though
+  the balance rose. Transactions carry no time, so a contribution or withdrawal
+  dated the day of a stored balance counts before or after it, whichever leaves
+  the least unexplained, and only money still in the box earns yield. Providers
+  report only the current balance, so one sync a day gives a one-day window. It is suggested when a monthly bill (same CNPJ,
+  stable amount) fits that amount (within 10% of its observed range) and its
+  usual day falls between the syncs; other outflows stay in **Debit review**.
 - **Estimated:** before the first stored balance only the total that left is
-  known (yield removed, at the rate implied by a box whose balance only grew).
-  A monthly bill missing from a month inside the period in which it was paid is
-  suggested only if the box keeps enough money, with yield, for every later
-  reported withdrawal and suggested payment, and only up to that total.
+  known (yield removed). A monthly bill missing from a month inside the period
+  in which it was paid is suggested only if the box keeps enough money, with
+  yield, for every later reported withdrawal and suggested payment, and only up
+  to that total. An established bill (seen in six months or more, including the
+  three before its last) is also looked for after its last month, up to the
+  first stored balance; a shorter one may have ended and is not.
+
+Monthly bills are bank debits only (a card charge cannot come out of a box),
+from any connection: a box may pay a bill usually paid from another account,
+and the suggestion is recorded in the box's connection.
 
 **Accept** opens the prefilled payment (description, amount, date, category,
 box, CNPJ) for editing and records it as a manual entry paid from the box;

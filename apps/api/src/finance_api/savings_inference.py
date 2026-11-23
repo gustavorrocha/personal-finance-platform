@@ -4,20 +4,29 @@ Mercado Pago does not report a boleto paid with a savings-box balance: only the 
 shrinks. The evidence of such a payment is therefore a drop in the box balance that no
 reported withdrawal explains.
 
-- Since the first stored balance of a box, each drop between two observations is known:
-  previous balance + reported contributions - reported withdrawals + expected yield -
-  current balance. It becomes an "observed" suggestion with that amount and the days in
-  between; a monthly bill whose amount and usual day fit names it. Daily syncs make the
-  window a single day.
+- Since the first stored balance of a box, what left it between two observations is
+  known (analytics.savings_box_outflows): previous balance + its CDI yield on the business
+  days in between + reported contributions - reported withdrawals - current balance, even
+  when the yield made the balance rise. It becomes an "observed" suggestion with that
+  amount and the days in between; a monthly bill whose amount and usual day fit names it.
+  Daily syncs make the window a single day.
 - Before that, providers expose no balance history: only the total that left is known.
   "Estimated" suggestions place monthly bills in months in which they were not reported,
   only while the box keeps a non-negative balance through every reported movement (with
-  yield) and only up to that total.
+  yield) and only up to that total. Established bills are also looked for after their
+  last month, up to the first stored balance.
+
+Bills are bank debits (card charges cannot come out of a box) from any connection: a box
+may pay a bill usually paid from another account.
+
+Yield follows the Banco Central's daily CDI times each box's percentage on business days.
+Without CDI data it falls back to a calendar-day rate implied by a box that only grew.
 
 The operator accepts or ignores each suggestion; nothing is recorded automatically.
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date, timedelta
 from statistics import mean, pstdev
 
@@ -28,29 +37,59 @@ MAX_VARIATION = 0.35
 AMOUNT_TOLERANCE = 0.10
 
 Entry = tuple[date, float]
+# Growth of money from the first day to the second (1 when the second is not later).
+Factor = Callable[[date, date], float]
 
 
-def grow(entries: list[Entry], rate: float, until: date) -> float:
-    return sum(amount * (1 + rate) ** max(0, (until - day).days) for day, amount in entries)
+def constant(rate: float) -> Factor:
+    return lambda start, end: (1 + rate) ** max(0, (end - start).days)
+
+
+def curve(cdi: dict[date, float], share: float, first: date, last: date) -> Factor:
+    """Growth at `share` of the CDI (daily percentages) on business days; days after the
+    last published rate are weekdays at that rate."""
+    newest = max(cdi, default=None)
+    index, level, day = {}, 1.0, first
+    while day <= last:
+        index[day] = level
+        if newest and day > newest:
+            rate = cdi[newest] if day.weekday() < 5 else 0.0
+        else:
+            rate = cdi.get(day, 0.0)
+        level *= 1 + rate / 100 * share
+        day += timedelta(days=1)
+
+    def factor(start: date, end: date) -> float:
+        if end <= start:
+            return 1.0
+        start, end = max(start, first), min(end, last)
+        return index[end] / index[start] if end > start else 1.0
+
+    return factor
+
+
+def grow(entries: list[Entry], factor: Factor, until: date) -> float:
+    return sum(amount * factor(day, until) for day, amount in entries)
 
 
 def implied_rate(entries: list[Entry], balance: float, today: date) -> float | None:
     """Daily rate that turns the box's reported flows into today's balance."""
-    invested = grow(entries, 0, today)
+    invested = grow(entries, constant(0), today)
     if not entries or invested <= 0 or balance <= invested:
         return None
     low, high = 0.0, 0.01
     for _ in range(80):
         middle = (low + high) / 2
-        low, high = (middle, high) if grow(entries, middle, today) < balance else (low, middle)
+        reached = grow(entries, constant(middle), today)
+        low, high = (middle, high) if reached < balance else (low, middle)
     return low
 
 
-def never_negative(entries: list[Entry], rate: float) -> bool:
+def never_negative(entries: list[Entry], factor: Factor) -> bool:
     """The box can pay every reported withdrawal and suggested payment when it happens."""
     ordered = sorted(entries, key=lambda entry: (entry[0], -entry[1]))
     return all(
-        grow(ordered[: index + 1], rate, day) >= -1 for index, (day, _) in enumerate(ordered)
+        grow(ordered[: index + 1], factor, day) >= -1 for index, (day, _) in enumerate(ordered)
     )
 
 
@@ -100,11 +139,13 @@ def suggest(
     dismissed: set[tuple[str, str]],
     today: date,
     outflows: list[dict] | None = None,
+    cdi: list[dict] | None = None,
 ) -> dict:
     """boxes: item, name, balance, pct, observed_since (first stored balance, ISO date).
     flows: item, box (lower name), date, kind, amount. payments: item, date, amount, cnpj,
     payee, category_id, category. dismissed: (cnpj, month). outflows (drops between two
-    stored balances): item, box (name), start, end, amount, previous_balance.
+    stored balances, yield already removed): item, box (name), start, end, amount.
+    cdi: day, value (daily percentage).
     """
     entries: dict[tuple[str, str], list[Entry]] = defaultdict(list)
     for row in flows:
@@ -120,13 +161,31 @@ def suggest(
         and (rate := implied_rate(entries[key], float(box["balance"]), today)) is not None
     ]
     per_point = max(normalized, default=DEFAULT_DAILY_RATE / 120)
+    rates = {date.fromisoformat(row["day"]): float(row["value"]) for row in cdi or []}
+    first = min((day for rows in entries.values() for day, _ in rows), default=today)
+    factors: dict[tuple[str, str], Factor] = {}
 
-    def rate(key: tuple[str, str]) -> float:
-        return per_point * float(named[key]["pct"] or 120 if key in named else 120)
+    def share(key: tuple[str, str]) -> float:
+        return float(named[key]["pct"] or 120 if key in named else 120)
+
+    def factor(key: tuple[str, str]) -> Factor:
+        if key not in factors:
+            factors[key] = (
+                curve(rates, share(key) / 100, min(first, today), today + timedelta(days=1))
+                if rates
+                else constant(per_point * share(key))
+            )
+        return factors[key]
+
+    if rates:
+        # Calendar-day equivalent of 120% of the CDI over the last year (or the rates known).
+        since = max(today - timedelta(days=365), min(rates))
+        span = max(1, (today - since).days)
+        per_point = (curve(rates, 1.2, since, today)(since, today) ** (1 / span) - 1) / 120
 
     # Total that left each box without a reported withdrawal, yield removed.
     gaps = {
-        key: grow(entries[key], rate(key), today) - float(box["balance"])
+        key: grow(entries[key], factor(key), today) - float(box["balance"])
         for key, box in named.items()
         if entries[key]
     }
@@ -138,19 +197,13 @@ def suggest(
     for drop in outflows or []:
         key = drop["item"], drop["box"].lower()
         start, end = date.fromisoformat(drop["start"]), date.fromisoformat(drop["end"])
-        # The balance earned yield between the two observations, which hid part of the
-        # payment: add it back to get the bill's full value.
-        earned = float(drop.get("previous_balance") or 0) * (
-            (1 + rate(key)) ** (end - start).days - 1
-        )
-        amount = float(drop["amount"]) + earned
+        amount = float(drop["amount"])
         observed_total[key] += amount
         window = [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
         fits = [
             (abs(amount - bill["amount"]), bill, day)
             for bill in bills
-            if bill["item"] == drop["item"]
-            and bill["low"] * (1 - AMOUNT_TOLERANCE)
+            if bill["low"] * (1 - AMOUNT_TOLERANCE)
             <= amount
             <= bill["high"] * (1 + AMOUNT_TOLERANCE)
             for day in window
@@ -189,10 +242,25 @@ def suggest(
 
     # 2. Before the first stored balance: place missing bill months while every box stays
     # solvent through its reported movements, up to what left it unobserved.
+    # An established bill (seen in 6 months or more, including the 3 before its last) is
+    # also looked for after its last month, up to the first stored balance.
+    horizon = min(
+        (box["observed_since"] for box in boxes if box.get("observed_since")),
+        default=today.isoformat(),
+    )[:7]
+
+    def last_month(bill: dict) -> str:
+        last = bill["seen"][-1]
+        year, month = map(int, last.split("-"))
+        index = year * 12 + month - 1
+        recent = [f"{(index - back) // 12:04d}-{(index - back) % 12 + 1:02d}" for back in range(3)]
+        established = len(bill["seen"]) >= 6 and all(slot in bill["seen"] for slot in recent)
+        return max(last, horizon) if established else last
+
     candidates = [
         {**bill, "month": month, "date": when}
         for bill in bills
-        for month in month_range(bill["seen"][0], bill["seen"][-1])
+        for month in month_range(bill["seen"][0], last_month(bill))
         if month not in bill["seen"]
         and (bill["cnpj"], month) not in dismissed
         and (when := date(*map(int, month.split("-")), min(bill["day"], 28))) <= today
@@ -204,14 +272,12 @@ def suggest(
             since = date.fromisoformat(box.get("observed_since") or today.isoformat())
             unobserved = gaps.get(key, 0) - observed_total[key]
             remaining = unobserved - sum(-amount for _, amount in placed[key])
-            if (
-                key[0] != candidate["item"]
-                or candidate["date"] >= since
-                or remaining < candidate["amount"] * 0.9
-            ):
+            # Any box may have paid it, even one in another connection than the bill's
+            # usual account.
+            if candidate["date"] >= since or remaining < candidate["amount"] * 0.9:
                 continue
             trial = entries[key] + placed[key] + [(candidate["date"], -candidate["amount"])]
-            if never_negative(trial, rate(key)):
+            if never_negative(trial, factor(key)):
                 options.append((remaining, box["name"], key))
         if options:
             _, name, key = max(options)
@@ -234,6 +300,8 @@ def suggest(
                         )
                     },
                     "kind": "estimated",
+                    # The payment is recorded in the box's connection.
+                    "item": key[0],
                     "box": name,
                     "window": None,
                     "key": key,

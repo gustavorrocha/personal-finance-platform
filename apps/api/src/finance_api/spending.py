@@ -537,8 +537,7 @@ async def savings_box_suggestions():
     )
     outflows = await dashboard_query(
         "SELECT toString(item_key) AS item, name AS box, toString(previous_day) AS start, "
-        "toString(economic_date) AS end, toString(amount) AS amount, "
-        "toString(previous_balance) AS previous_balance "
+        "toString(economic_date) AS end, toString(amount) AS amount "
         "FROM analytics.savings_box_outflows WHERE item_key != {demo:UUID} FORMAT JSONEachRow",
         demo=DEMO_ITEM,
     )
@@ -556,7 +555,7 @@ async def savings_box_suggestions():
         "if(business_name != '', business_name, merchant_label) AS payee, category_id, "
         "if(subcategory != '', concat(category, ' › ', subcategory), category) AS category "
         "FROM analytics.spending_dashboard WHERE included AND net_amount > 0 AND cnpj != '' "
-        "AND item_key != {demo:UUID} FORMAT JSONEachRow",
+        "AND source = 'bank' AND item_key != {demo:UUID} FORMAT JSONEachRow",
         demo=DEMO_ITEM,
     )
     dismissed = await dashboard_query(
@@ -569,6 +568,10 @@ async def savings_box_suggestions():
         {(row["cnpj"], row["month"]) for row in dismissed},
         date.today(),
         outflows,
+        await dashboard_query(
+            "SELECT toString(day) AS day, toString(value) AS value FROM "
+            "(SELECT * FROM analytics.market_rates WHERE series = 'CDI') FORMAT JSONEachRow"
+        ),
     )
 
 

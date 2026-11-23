@@ -213,7 +213,7 @@
   "decidedReceipts": "Decided transfers",
   "boxSuggestions": "Likely paid from a savings box",
   "boxSuggestionsHelp": "The bank does not report bills paid straight from a savings box: the evidence is the box balance falling without a reported withdrawal. Observed suggestions are drops seen between two syncs, with their exact amount, named by a monthly bill that fits. Before the first stored balance only the total that left is known: estimated suggestions place monthly bills that are missing from a month only while the box keeps enough money for every later withdrawal. Accept one to record it as a manual entry paid from that box (adjust the amount first if needed), or ignore it.",
-  "boxYield": "Yield is discounted at about {rate}% a day (120% CDI), estimated from a box whose balance only grew.",
+  "boxYield": "Yield is discounted with the daily CDI times each box's percentage, on business days (about {rate}% a calendar day at 120% of the CDI over the last year).",
   "boxGap": "{box}: {gap} left without a reported withdrawal ({observed} observed since {since}); suggestions below cover {suggested}.",
   "observedRange": "Paid between {low} and {high} in other months",
   "acceptSuggestion": "Accept",
