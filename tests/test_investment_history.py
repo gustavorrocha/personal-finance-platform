@@ -206,4 +206,30 @@ def test_returns_follow_each_model_weighted_by_value_and_ignore_flows(monkeypatc
     portfolio = Decimal(returns["portfolio"]["month"])
     assert Decimal(returns[bond["name"]]["month"]) < portfolio < Decimal(returns["LCA"]["month"])
     assert Decimal(result["cdi"]["month"]) == Decimal(returns["LCA"]["month"])
-    assert result["uncovered"] == [] and result["series"][-1]["day"] == "2026-11-23"
+    assert result["uncovered"] == [] and result["series"]["days"][-1] == "2026-11-23"
+
+
+def test_cdi_comparison_starts_when_the_position_was_bought(monkeypatch):
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 24)
+
+    monkeypatch.setattr(investment_history, "date", Today)
+    business = [
+        date(2025, 11, 1) + timedelta(days=n)
+        for n in range(390)
+        if (date(2025, 11, 1) + timedelta(days=n)).weekday() < 5
+    ]
+    rates = [{"series": "CDI", "day": str(day), "value": "0.05"} for day in business]
+    lca = snapshot("lca", "2026-11-20", "1000", indexer="CDI", name="LCA")
+    lca |= {"rate": "100", "purchase_date": "2026-11-10"}
+    result = investment_history.invested_returns([lca], [], {}, CLASSES, rates, [])
+    position = next(row for row in result["rows"] if row["kind"] == "position")
+    held = sum(date(2026, 11, 10) <= day < date(2026, 11, 22) for day in business)
+    expected = Decimal("1.0005") ** held - 1
+    assert Decimal(position["returns"]["12m"]) == pytest.approx(expected, abs=Decimal("1e-6"))
+    assert position["cdi"]["12m"] == position["returns"]["12m"]  # 100% of the CDI
+    assert Decimal(result["cdi"]["12m"]) > expected  # the full-period CDI is longer
+    kinds = [line["kind"] for line in result["series"]["lines"]]
+    assert kinds == ["cdi", "portfolio", "class"]

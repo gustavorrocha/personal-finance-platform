@@ -200,7 +200,11 @@ nor losses; a Tesouro coupon payment counts as earned instead of as the price
 drop it causes. A class or the portfolio averages its positions weighted by the
 previous day's value. Positions without a rate or public price are left out and
 listed below the table. A position held for less than a period shows its return
-since it was bought.
+since it was bought, and every row's share of the CDI compares it with the CDI
+compounded over the days that row was held. The chart draws the cumulative
+12-month return of the portfolio, the CDI and each class (classes in the same
+colors and order as the invested wealth chart; end labels only up to four
+lines, the tooltip and table always).
 
 `finance market-sync` downloads the last ten years of the public CDI, Selic and
 IPCA series from the Banco Central (SGS) into `core.market_rates`, and of every

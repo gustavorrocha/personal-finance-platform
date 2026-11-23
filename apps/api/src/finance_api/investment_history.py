@@ -370,75 +370,81 @@ def invested_returns(
         if value:
             members[key].append({"key": position, "name": name, "value": value})
 
-    def levels(group: str | None, daily) -> list[Decimal]:
+    cdi_yield = daily_yield({"indexer": "CDI", "rate": "100"}, series)
+    cdi_daily = [Decimal(0)] + [cdi_yield(day - DAY) for day in days[1:]]
+    nothing = [Decimal(0)] * len(days)
+
+    def compound(daily: list[Decimal]) -> list[Decimal]:
         level, result = Decimal(1), [Decimal(1)]
-        for offset in range(1, len(days)):
-            level *= 1 + daily(offset)
+        for value in daily[1:]:
+            level *= 1 + value
             result.append(level)
         return result
 
-    def group_levels(group: str) -> list[Decimal]:
-        def daily(offset: int) -> Decimal:
-            total = weight.get(group, [Decimal(0)] * len(days))[offset]
-            return earned[group][offset] / total if total else Decimal(0)
+    def measure(group: str) -> tuple[list[Decimal], list[Decimal], list[Decimal]]:
+        """Levels of the group and of the CDI over the days the group was held, and its
+        daily weights."""
+        weights = weight.get(group, nothing)
+        own = [
+            earned[group][o] / weights[o] if weights[o] else Decimal(0) for o in range(len(days))
+        ]
+        benchmark = [cdi_daily[o] if weights[o] else Decimal(0) for o in range(len(days))]
+        return compound(own), compound(benchmark), weights
 
-        return levels(group, daily)
-
-    def period_returns(path: list[Decimal], group: str | None) -> dict:
+    def period_returns(path: list[Decimal], weights: list[Decimal] | None) -> dict:
         result = {}
         for period, base in bases.items():
             first = days.index(base)
-            covered = group is None or any(weight.get(group, [])[first + 1 :])
+            covered = weights is None or any(weights[first + 1 :])
             result[period] = f"{path[-1] / path[first] - 1:.6f}" if covered else None
         return result
 
-    cdi_yield = daily_yield({"indexer": "CDI", "rate": "100"}, series)
-    cdi = levels(None, lambda offset: cdi_yield(days[offset] - DAY))
-    portfolio = group_levels("")
+    def row(kind: str, key: str, name: str, value: Decimal, group: str) -> dict:
+        path, benchmark, weights = measure(group)
+        return {
+            "kind": kind,
+            "key": key,
+            "name": name,
+            "value": str(value.quantize(CENTS)),
+            "returns": period_returns(path, weights),
+            # The CDI over the same days, so "% of the CDI" starts when the position did.
+            "cdi": period_returns(benchmark, weights),
+        }
+
     output = []
     if "" in weight:
+        output.append(row("portfolio", "", "", held.get("", Decimal(0)), ""))
+    ordered = sorted(members, key=lambda key: (not key, names.get(key, "")))
+    for key in ordered:
         output.append(
-            {
-                "kind": "portfolio",
-                "key": "",
-                "name": "",
-                "value": str(held.get("", Decimal(0)).quantize(CENTS)),
-                "returns": period_returns(portfolio, ""),
-            }
-        )
-    for key in sorted(members, key=lambda key: (not key, names.get(key, ""))):
-        output.append(
-            {
-                "kind": "class",
-                "key": key,
-                "name": names.get(key, ""),
-                "value": str(held.get(key, Decimal(0)).quantize(CENTS)),
-                "returns": period_returns(group_levels(f"class:{key}"), f"class:{key}"),
-            }
+            row("class", key, names.get(key, ""), held.get(key, Decimal(0)), f"class:{key}")
         )
         for member in sorted(members[key], key=lambda member: -member["value"]):
             output.append(
-                {
-                    "kind": "position",
-                    "key": member["key"],
-                    "name": member["name"],
-                    "value": str(member["value"].quantize(CENTS)),
-                    "returns": period_returns(group_levels(member["key"]), member["key"]),
-                }
+                row("position", member["key"], member["name"], member["value"], member["key"])
             )
     first = days.index(bases["12m"])
+
+    def line(kind: str, key: str, name: str, path: list[Decimal]) -> dict:
+        return {
+            "kind": kind,
+            "key": key,
+            "name": name,
+            "values": [f"{level / path[first] - 1:.6f}" for level in path[first:]],
+        }
+
+    lines = [line("cdi", "", "", compound(cdi_daily))]
+    if "" in weight:
+        lines.append(line("portfolio", "", "", measure("")[0]))
+    lines += [
+        line("class", key, names.get(key, ""), measure(f"class:{key}")[0])
+        for key in ordered
+        if f"class:{key}" in weight
+    ]
     return {
         "end": str(end),
         "rows": output,
-        "cdi": period_returns(cdi, None),
+        "cdi": period_returns(compound(cdi_daily), None),
         "uncovered": uncovered,
-        "series": [
-            {
-                "day": str(day),
-                "portfolio": f"{portfolio[offset] / portfolio[first] - 1:.6f}",
-                "cdi": f"{cdi[offset] / cdi[first] - 1:.6f}",
-            }
-            for offset, day in enumerate(days)
-            if offset >= first
-        ],
+        "series": {"days": [str(day) for day in days[first:]], "lines": lines},
     }

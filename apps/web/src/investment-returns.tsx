@@ -13,11 +13,23 @@ export type InvestmentReturnsData = {
     name: string;
     value: string;
     returns: PeriodReturns;
+    /** The CDI over the days the row was held. */
+    cdi: PeriodReturns;
   }[];
   cdi: PeriodReturns;
   uncovered: { name: string; value: string }[];
-  series: { day: string; portfolio: string; cdi: string }[];
+  series: {
+    days: string[];
+    lines: {
+      kind: "cdi" | "portfolio" | "class";
+      key: string;
+      name: string;
+      values: string[];
+    }[];
+  };
 };
+
+type Line = InvestmentReturnsData["series"]["lines"][number];
 
 const PERIOD_LABELS = {
   month: "periodMonth",
@@ -26,6 +38,11 @@ const PERIOD_LABELS = {
   "12m": "period12m",
   ytd: "periodYtd",
 } as const;
+
+// Same palette size as the invested wealth chart; classes keep its name order.
+const SERIES = 6;
+// Direct labels at the line ends only while they stay readable.
+const LABELLED = 4;
 
 /** Time-weighted returns of the portfolio, classes and positions against the CDI. */
 export function InvestmentReturns({
@@ -44,23 +61,24 @@ export function InvestmentReturns({
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(Number(value));
-  const ofCdi = (value: string | null, period: Period) => {
-    const cdi = Number(data.cdi[period]);
-    if (value === null || !(cdi > 0)) return null;
+  const ofCdi = (value: string | null, cdi: string | null) => {
+    if (value === null || cdi === null || !(Number(cdi) > 0)) return null;
     return copy.returnsOfCdi.replace(
       "{percent}",
       new Intl.NumberFormat(locale, {
         style: "percent",
         maximumFractionDigits: 0,
-      }).format(Number(value) / cdi),
+      }).format(Number(value) / Number(cdi)),
     );
   };
-  const label = (row: InvestmentReturnsData["rows"][number]) =>
+  const label = (row: { kind: string; key: string; name: string }) =>
     row.kind === "portfolio"
       ? copy.returnsPortfolio
-      : row.kind === "class" && !row.key
-        ? copy.unclassifiedInvestment
-        : row.name;
+      : row.kind === "cdi"
+        ? copy.returnsCdi
+        : row.kind === "class" && !row.key
+          ? copy.unclassifiedInvestment
+          : row.name;
   return (
     <>
       <p>
@@ -69,7 +87,12 @@ export function InvestmentReturns({
           formatDate(data.end, locale),
         )}
       </p>
-      <ReturnsChart series={data.series} locale={locale} percent={percent} />
+      <ReturnsChart
+        series={data.series}
+        locale={locale}
+        percent={percent}
+        label={label}
+      />
       <div className="table-wrap">
         <table className="returns-table">
           <thead>
@@ -96,10 +119,7 @@ export function InvestmentReturns({
                   {formatMoney(row.value, "BRL", locale)}
                 </td>
                 {PERIODS.map((period) => {
-                  const relative =
-                    row.kind === "position"
-                      ? null
-                      : ofCdi(row.returns[period], period);
+                  const relative = ofCdi(row.returns[period], row.cdi[period]);
                   return (
                     <td className="numeric" key={period}>
                       {percent(row.returns[period])}
@@ -138,115 +158,133 @@ export function InvestmentReturns({
 }
 
 const WIDTH = 640;
-const HEIGHT = 220;
-const PAD = { top: 12, right: 112, bottom: 24, left: 8 };
+const HEIGHT = 240;
+const PAD = { top: 12, right: 8, bottom: 24, left: 8 };
+const LABEL_WIDTH = 150;
 
 function ReturnsChart({
   series,
   locale,
   percent,
+  label,
 }: {
   series: InvestmentReturnsData["series"];
   locale: Locale;
   percent: (value: string | null) => string;
+  label: (line: Line) => string;
 }) {
   const copy = messages[locale];
   const [hover, setHover] = useState<number>();
-  if (series.length < 2) return null;
-  const values = series.flatMap((point) => [
-    Number(point.portfolio),
-    Number(point.cdi),
-  ]);
+  const { days, lines } = series;
+  if (days.length < 2 || lines.length === 0) return null;
+  // Classes in the API's order (by name, unclassified last) take the fixed palette;
+  // the portfolio is drawn in ink and the CDI dashed, outside the palette.
+  let next = 0;
+  const styled = lines.map((line) => ({
+    line,
+    className:
+      line.kind === "class"
+        ? `series-${Math.min(next++, SERIES - 1) + 1}`
+        : `returns-${line.kind}`,
+  }));
+  // Draw the CDI first and the portfolio last, on top.
+  const drawn = [
+    ...styled.filter(({ line }) => line.kind === "cdi"),
+    ...styled.filter(({ line }) => line.kind === "class"),
+    ...styled.filter(({ line }) => line.kind === "portfolio"),
+  ];
+  const labelled = lines.length <= LABELLED;
+  const right = WIDTH - PAD.right - (labelled ? LABEL_WIDTH : 0);
+  const values = lines.flatMap((line) => line.values.map(Number));
   const low = Math.min(0, ...values);
   const high = Math.max(0, ...values);
   const span = high - low || 1;
   const x = (index: number) =>
-    PAD.left + (index / (series.length - 1)) * (WIDTH - PAD.left - PAD.right);
+    PAD.left + (index / (days.length - 1)) * (right - PAD.left);
   const y = (value: number) =>
     PAD.top + ((high - value) / span) * (HEIGHT - PAD.top - PAD.bottom);
-  const path = (pick: (point: (typeof series)[number]) => string) =>
-    series
-      .map((point, index) => `${x(index)},${y(Number(pick(point)))}`)
-      .join(" ");
-  const last = series[series.length - 1];
-  const point = hover === undefined ? undefined : series[hover];
-  const months = series.filter(
-    (entry, index) =>
-      index === series.length - 1 ||
-      entry.day.slice(0, 7) !== series[index + 1].day.slice(0, 7),
-  );
-  // Keep the two end labels apart when the lines finish close together.
-  let portfolioY = y(Number(last.portfolio));
-  let cdiY = y(Number(last.cdi));
-  if (Math.abs(portfolioY - cdiY) < 14) {
-    const middle = (portfolioY + cdiY) / 2;
-    const up = portfolioY <= cdiY ? -7 : 7;
-    portfolioY = middle + up;
-    cdiY = middle - up;
-  }
+  const last = days.length - 1;
+  // End labels, nudged apart so they never overlap.
+  const ends = styled
+    .map(({ line }) => ({ line, at: y(Number(line.values[last])) }))
+    .sort((a, b) => a.at - b.at);
+  for (let index = 1; index < ends.length; index += 1)
+    ends[index].at = Math.max(ends[index].at, ends[index - 1].at + 14);
+  const months = days
+    .map((day, index) => ({ day, index }))
+    .filter(
+      ({ day, index }) =>
+        index === last || day.slice(0, 7) !== days[index + 1].slice(0, 7),
+    );
+  const summary = lines
+    .map((line) => `${label(line)} ${percent(line.values[last])}`)
+    .join(", ");
   return (
     <div className="chart returns-chart">
       <h3>{copy.returnsChart}</h3>
       <ul className="legend">
-        <li>
-          <i className="swatch series-1" aria-hidden="true" />
-          {copy.returnsPortfolio}
-        </li>
-        <li>
-          <i className="swatch benchmark" aria-hidden="true" />
-          {copy.returnsCdi}
-        </li>
+        {styled.map(({ line, className }) => (
+          <li key={`${line.kind}-${line.key}`}>
+            <i className={`swatch ${className}`} aria-hidden="true" />
+            {label(line)}
+          </li>
+        ))}
       </ul>
       <div className="returns-plot">
         <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           role="img"
-          aria-label={`${copy.returnsChart}: ${copy.returnsPortfolio} ${percent(last.portfolio)}, ${copy.returnsCdi} ${percent(last.cdi)}`}
+          aria-label={`${copy.returnsChart}: ${summary}`}
           onPointerMove={(event) => {
             const box = event.currentTarget.getBoundingClientRect();
-            const ratio =
+            const position =
               ((event.clientX - box.left) / box.width) * WIDTH - PAD.left;
             const index = Math.round(
-              (ratio / (WIDTH - PAD.left - PAD.right)) * (series.length - 1),
+              (position / (right - PAD.left)) * (days.length - 1),
             );
-            setHover(Math.max(0, Math.min(series.length - 1, index)));
+            setHover(Math.max(0, Math.min(last, index)));
           }}
           onPointerLeave={() => setHover(undefined)}
         >
           <line
             className="returns-zero"
             x1={PAD.left}
-            x2={WIDTH - PAD.right}
+            x2={right}
             y1={y(0)}
             y2={y(0)}
           />
-          <polyline className="returns-cdi" points={path((p) => p.cdi)} />
-          <polyline
-            className="returns-portfolio"
-            points={path((p) => p.portfolio)}
-          />
-          <text
-            className="returns-label"
-            x={WIDTH - PAD.right + 8}
-            y={portfolioY}
-          >
-            {copy.returnsPortfolio} {percent(last.portfolio)}
-          </text>
-          <text className="returns-label" x={WIDTH - PAD.right + 8} y={cdiY}>
-            {copy.returnsCdi} {percent(last.cdi)}
-          </text>
+          {drawn.map(({ line, className }) => (
+            <polyline
+              key={`${line.kind}-${line.key}`}
+              className={`returns-line ${className}`}
+              points={line.values
+                .map((value, index) => `${x(index)},${y(Number(value))}`)
+                .join(" ")}
+            />
+          ))}
+          {labelled &&
+            ends.map(({ line, at }) => (
+              <text
+                key={`${line.kind}-${line.key}`}
+                className="returns-label"
+                x={right + 8}
+                y={at}
+              >
+                {label(line)} {percent(line.values[last])}
+              </text>
+            ))}
           <text className="returns-axis" x={PAD.left} y={HEIGHT - 6}>
-            {formatDate(series[0].day, locale)}
+            {formatDate(days[0], locale)}
           </text>
           <text
             className="returns-axis"
-            x={WIDTH - PAD.right}
+            x={right}
             y={HEIGHT - 6}
             textAnchor="end"
           >
-            {formatDate(last.day, locale)}
+            {formatDate(days[last], locale)}
           </text>
-          {point && hover !== undefined && (
+          {hover !== undefined && (
             <g>
               <line
                 className="returns-cursor"
@@ -255,34 +293,30 @@ function ReturnsChart({
                 y1={PAD.top}
                 y2={HEIGHT - PAD.bottom}
               />
-              <circle
-                className="returns-portfolio-dot"
-                cx={x(hover)}
-                cy={y(Number(point.portfolio))}
-                r={4}
-              />
-              <circle
-                className="returns-cdi-dot"
-                cx={x(hover)}
-                cy={y(Number(point.cdi))}
-                r={4}
-              />
+              {drawn.map(({ line, className }) => (
+                <circle
+                  key={`${line.kind}-${line.key}`}
+                  className={`returns-dot ${className}`}
+                  cx={x(hover)}
+                  cy={y(Number(line.values[hover]))}
+                  r={4}
+                />
+              ))}
             </g>
           )}
         </svg>
-        {point && hover !== undefined && (
+        {hover !== undefined && (
           <span
             className="returns-tooltip"
             style={{ left: `${(x(hover) / WIDTH) * 100}%` }}
             aria-hidden="true"
           >
-            <b>{formatDate(point.day, locale)}</b>
-            <span>
-              {copy.returnsPortfolio}: {percent(point.portfolio)}
-            </span>
-            <span>
-              {copy.returnsCdi}: {percent(point.cdi)}
-            </span>
+            <b>{formatDate(days[hover], locale)}</b>
+            {styled.map(({ line }) => (
+              <span key={`${line.kind}-${line.key}`}>
+                {label(line)}: {percent(line.values[hover])}
+              </span>
+            ))}
           </span>
         )}
       </div>
@@ -293,20 +327,26 @@ function ReturnsChart({
             <thead>
               <tr>
                 <th scope="col">{copy.month}</th>
-                <th scope="col" className="numeric">
-                  {copy.returnsPortfolio}
-                </th>
-                <th scope="col" className="numeric">
-                  {copy.returnsCdi}
-                </th>
+                {styled.map(({ line }) => (
+                  <th
+                    scope="col"
+                    className="numeric"
+                    key={`${line.kind}-${line.key}`}
+                  >
+                    {label(line)}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {months.map((entry) => (
-                <tr key={entry.day}>
-                  <th scope="row">{formatDate(entry.day, locale)}</th>
-                  <td className="numeric">{percent(entry.portfolio)}</td>
-                  <td className="numeric">{percent(entry.cdi)}</td>
+              {months.map(({ day, index }) => (
+                <tr key={day}>
+                  <th scope="row">{formatDate(day, locale)}</th>
+                  {styled.map(({ line }) => (
+                    <td className="numeric" key={`${line.kind}-${line.key}`}>
+                      {percent(line.values[index])}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
