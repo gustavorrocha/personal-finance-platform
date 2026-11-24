@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
 import { CategoriesView, categoryPath, type CategoryNode } from "./categories";
-import { visibleConnections } from "./connections";
+import { connectionLabel, visibleConnections } from "./connections";
 import { InvestmentsView } from "./investments";
 import {
   ExpenseDialog,
@@ -46,7 +46,12 @@ import {
 } from "./locale";
 import "./style.css";
 
-type Connection = { id: string; is_demo: boolean; latest_month: string };
+type Connection = {
+  id: string;
+  is_demo: boolean;
+  latest_month: string;
+  institution?: string | null;
+};
 type Total = {
   currency: string;
   bucket: string | null;
@@ -309,9 +314,14 @@ function App() {
   );
   const connections = visibleConnections(data?.connections ?? []);
   const connectionLabels = new Map(
-    data?.connections.map((connection, index) => [
+    data?.connections.map((connection) => [
       connection.id,
-      `${copy.connection} ${number.format(index + 1)}`,
+      connectionLabel(
+        data.connections,
+        connection,
+        copy.connection,
+        copy.syntheticDemo,
+      ),
     ]),
   );
   const categories = data?.categories ?? [];

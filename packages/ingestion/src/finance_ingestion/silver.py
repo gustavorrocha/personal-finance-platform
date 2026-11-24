@@ -183,6 +183,27 @@ def reserved_balance(record: dict, currency: str | None) -> str | None:
     return decimal_field(total)
 
 
+def account_details(record: dict) -> dict:
+    """Product name, last digits and card terms; the holder's name and CPF stay in Bronze."""
+    name = text_field(record.get("marketingName") or record.get("name"), 512)
+    owner = record.get("owner")
+    if name and isinstance(owner, str) and name.casefold() == owner.strip().casefold():
+        name = None
+    credit = record.get("creditData")
+    credit = credit if isinstance(credit, dict) else {}
+    return {
+        "name": name,
+        "number_suffix": digits(record.get("number"))[-4:] or None,
+        "brand": text_field(credit.get("brand")),
+        "level": text_field(credit.get("level")),
+        "credit_limit": decimal_field(credit.get("creditLimit")),
+        "available_credit": decimal_field(credit.get("availableCreditLimit")),
+        "minimum_payment": decimal_field(credit.get("minimumPayment")),
+        "due_date": provider_date(credit.get("balanceDueDate")),
+        "close_date": provider_date(credit.get("balanceCloseDate")),
+    }
+
+
 def normalized_row(
     manifest: Manifest,
     item: UUID,
@@ -268,6 +289,7 @@ def normalized_row(
         row.update(transaction_details(record))
     if resource == "accounts":
         row["reserved_balance"] = reserved_balance(record, currency)
+        row.update(account_details(record))
     if resource == "investments":
         row["rate_type"] = text_field(record.get("rateType"))
         row["symbol"] = text_field(record.get("code"))

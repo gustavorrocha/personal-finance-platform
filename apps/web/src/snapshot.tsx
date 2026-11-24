@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { visibleConnections } from "./connections";
+import { connectionLabel, visibleConnections } from "./connections";
 import { messages, type Locale } from "./locale";
 
-type Connection = { id: string; is_demo: boolean };
+type Connection = { id: string; is_demo: boolean; institution?: string | null };
 export type Snapshot = {
   connections: Connection[];
   selected: Connection | null;
@@ -37,7 +37,6 @@ export function SnapshotView<T extends Snapshot>({
   const copy = messages[locale];
   const Root = nested ? "section" : "main";
   const Heading = nested ? "h2" : "h1";
-  const number = new Intl.NumberFormat(locale);
   const connections = visibleConnections(snapshot?.connections ?? []);
   const selected = connections.some(({ id }) => id === snapshot?.selected?.id)
     ? snapshot?.selected
@@ -82,9 +81,12 @@ export function SnapshotView<T extends Snapshot>({
             <option value="">{copy.selectConnection}</option>
             {connections.map((connection) => (
               <option value={connection.id} key={connection.id}>
-                {connection.is_demo
-                  ? copy.syntheticDemo
-                  : `${copy.connection} ${number.format((snapshot?.connections.indexOf(connection) ?? 0) + 1)}`}
+                {connectionLabel(
+                  snapshot?.connections ?? [],
+                  connection,
+                  copy.connection,
+                  copy.syntheticDemo,
+                )}
               </option>
             ))}
           </select>

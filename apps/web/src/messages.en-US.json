@@ -272,5 +272,17 @@
   "subcategories": "Subcategories",
   "chartMode": "Chart mode",
   "amountsMode": "Amounts",
-  "allocationMode": "Allocation %"
+  "allocationMode": "Allocation %",
+  "accountEnding": "ending {digits}",
+  "balanceOrBill": "Balance / bill",
+  "creditLimit": "Limit",
+  "creditAvailable": "{amount} available",
+  "creditDue": "Due {date}",
+  "creditCloses": "Closes {date}",
+  "creditMinimum": "Minimum {amount}",
+  "accountActive": "Counted",
+  "accountToggle": "Count {name} in balances and spending",
+  "accountDisabled": "Disabled",
+  "accountToggleError": "The account could not be changed. Try again.",
+  "disabledAccountsHelp": "A disabled account stays out of balance totals and spending. Its history is kept, and you can turn it back on at any time."
 }

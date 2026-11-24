@@ -138,3 +138,34 @@ def test_account_snapshot_scopes_distinct_connections_and_keeps_reported_values(
             ("BRL", "-320.4"),
             ("USD", None),
         }
+
+
+def test_account_details_keep_card_terms_but_not_the_holder():
+    from decimal import Decimal
+
+    from finance_ingestion.silver import account_details
+
+    card = account_details(
+        {
+            "name": "Synthetic Card",
+            "number": "5555 0000 0000 1234",
+            "owner": "Synthetic Holder",
+            "taxNumber": "98765432100",
+            "creditData": {
+                "brand": "MASTERCARD",
+                "level": "BLACK",
+                "creditLimit": Decimal("1000"),
+                "availableCreditLimit": Decimal("250.5"),
+                "balanceDueDate": "2026-12-10",
+                "balanceCloseDate": "2026-12-03",
+            },
+        }
+    )
+    assert card["name"] == "Synthetic Card"
+    assert card["number_suffix"] == "1234"
+    assert (card["brand"], card["level"]) == ("MASTERCARD", "BLACK")
+    assert card["available_credit"] == "250.500000000000"
+    assert (card["due_date"], card["close_date"]) == ("2026-12-10", "2026-12-03")
+    assert "98765432100" not in str(card) and "Holder" not in str(card)
+    bank = account_details({"name": "Synthetic Holder", "owner": "synthetic holder "})
+    assert bank["name"] is None and bank["number_suffix"] is None

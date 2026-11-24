@@ -273,7 +273,19 @@
     "subcategories": "c249a9a4a69a8a45393e643fff0439d6025409e2bb51b01116af5521e0897e2b",
     "chartMode": "9b19d23e1b509b734d3fc9a648d642ee2bae0fcce9cd619c1b70eaa02f16f3b3",
     "amountsMode": "eea6a22480bf916161993fd5a5a4227ea46c5f39f2cc08f208298fdb127f2255",
-    "allocationMode": "9a2f363517c3c56d7e6ec1070fe83b98c2a5b46cfd1664b4cb39f6b5aab32d3e"
+    "allocationMode": "9a2f363517c3c56d7e6ec1070fe83b98c2a5b46cfd1664b4cb39f6b5aab32d3e",
+    "accountEnding": "7afe8cf21d821b875b599c3d72ed1d4f8f5fdd4fa92ba4a9daa4ed86efbb70a9",
+    "balanceOrBill": "995d1d3ce6c8e726b625b55cf940d83e5365f4379b93fdb1713c36264e7a8241",
+    "creditLimit": "674b0ed54bf7667356c19baaf2ec56d4432d485bf0ebc6d687ad6e50e9611880",
+    "creditAvailable": "05421802af3d82be19b8f66fccfbe50a145e3fae70de17591197fbc2ae251196",
+    "creditDue": "48986e1336190d0aa3e9ac1cc838e1f530716ffbfaaa0426392065287690a7f2",
+    "creditCloses": "437927ef3ffd27e07e2e7e9f49f235d8c30aa9f0942abc01bf6b54126439e775",
+    "creditMinimum": "564f052920ffb00f8f98d8de450bf1be928ad3e01273194b7e9ca51fba76e4e9",
+    "accountActive": "c037c15990c592791fc90ae5a033c6706538119572665ffa9c9987d2eab26f91",
+    "accountToggle": "833ec4a08086207e64343162bc04820346c527b4290708ff27f206f899ec4a68",
+    "accountDisabled": "75081b593d15cf6e631971bc6768723f593b88b172477e40ae7d363e4829816d",
+    "accountToggleError": "04abe91baea8a8c925d2c0fb3f83fc64ca3fe646e5dd2b5c49f37f265db0a44c",
+    "disabledAccountsHelp": "1131f3e4e411775ce37e3fb62b152a7b9dd1141a87995e238e614eee408f8b4d"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -549,6 +561,18 @@
     "subcategories": "Subcategorias",
     "chartMode": "Modo do gráfico",
     "amountsMode": "Valores",
-    "allocationMode": "Alocação %"
+    "allocationMode": "Alocação %",
+    "accountEnding": "final {digits}",
+    "balanceOrBill": "Saldo / fatura",
+    "creditLimit": "Limite",
+    "creditAvailable": "{amount} disponível",
+    "creditDue": "Vence {date}",
+    "creditCloses": "Fecha {date}",
+    "creditMinimum": "Mínimo {amount}",
+    "accountActive": "Considerar",
+    "accountToggle": "Considerar {name} nos saldos e gastos",
+    "accountDisabled": "Desativada",
+    "accountToggleError": "Não foi possível alterar a conta. Tente novamente.",
+    "disabledAccountsHelp": "Uma conta desativada fica fora dos totais de saldo e dos gastos. O histórico é mantido e você pode reativá-la a qualquer momento."
   }
 }

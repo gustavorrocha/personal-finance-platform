@@ -137,6 +137,19 @@ async def dashboard_query(query: str, **parameters: str) -> list[dict]:
         return [json.loads(line) for line in response.text.splitlines()]
 
 
+async def add_institutions(connections: list[dict]) -> None:
+    """The institution's name for each connection, when the provider reported it."""
+    names = {
+        row["item_key"]: row["institution"]
+        for row in await dashboard_query(
+            "SELECT toString(item_key) AS item_key, institution FROM analytics.connection_names "
+            "FORMAT JSONEachRow"
+        )
+    }
+    for connection in connections:
+        connection["institution"] = names.get(connection["id"])
+
+
 @router.get("")
 async def spending(
     item: UUID | Literal["all"] | None = None,
@@ -159,6 +172,7 @@ async def spending(
         "FROM analytics.pending_card_spending) "
         "GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
     )
+    await add_institutions(connections)
     for index, row in enumerate(connections, start=1):
         row["is_demo"] = row["id"] == DEMO_ITEM
         row["label"] = "Synthetic demo" if row["is_demo"] else f"Connection {index}"

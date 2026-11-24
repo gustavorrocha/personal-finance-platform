@@ -1106,3 +1106,7 @@ tr.returns-benchmark td {
   border: 0;
   background: none;
 }
+
+tr.disabled > :not(:last-child) {
+  opacity: 0.55;
+}
