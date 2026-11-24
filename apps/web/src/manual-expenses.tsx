@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { categoryPath, categoryTree, type CategoryNode } from "./categories";
 import { formatMoney, messages, type Locale } from "./locale";
-import { Dialog, Menu } from "./ui";
+import { Dialog, Menu, Help } from "./ui";
 
 type Entry = {
   id: string;
@@ -49,6 +49,9 @@ export function ManualExpenses({
   const [formOpen, setFormOpen] = useState(false);
   const [boxes, setBoxes] = useState<{ item: string; name: string }[]>([]);
   const [formItem, setFormItem] = useState("");
+  const [recurring, setRecurring] = useState(true);
+  // "item|name" of the box that paid the entry, or "".
+  const [box, setBox] = useState("");
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<"manualSaved" | "manualError">();
@@ -94,17 +97,18 @@ export function ManualExpenses({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const value = (name: string) => String(form.get(name) ?? "").trim();
-    const recurring = form.get("recurring") === "on";
+    // A one-off entry is a single date: its month and day.
+    const date = value("date");
     const body = {
-      item: value("item"),
+      item: box ? box.split("|")[0] : value("item"),
       description: value("description"),
       amount: value("amount").replace(",", "."),
       category: value("category") || null,
-      day: Number(value("day")),
-      start: value("start"),
-      end: recurring ? value("end") || null : value("start"),
+      day: Number(recurring ? value("day") : date.slice(8)),
+      start: recurring ? value("start") : date.slice(0, 7),
+      end: recurring ? value("end") || null : date.slice(0, 7),
       cnpj: value("cnpj").replace(/\D/g, ""),
-      savings_box: value("savings_box"),
+      savings_box: box ? box.slice(box.indexOf("|") + 1) : "",
     };
     const target = event.currentTarget;
     void change(async () => {
@@ -125,15 +129,18 @@ export function ManualExpenses({
     void change(() => send("DELETE", `/${entry.id}`));
   }
 
+  const oneOff = (entry: Entry) => entry.end === entry.start;
+  const day = (entry: Entry) =>
+    `${entry.start}-${String(entry.day).padStart(2, "0")}`;
   const period = (entry: Entry) =>
-    entry.end === entry.start
-      ? entry.start
-      : `${entry.start} → ${entry.end ?? copy.noEndMonth}`;
+    oneOff(entry)
+      ? day(entry)
+      : `${entry.start} → ${entry.end ?? copy.noEndMonth} · ${copy.manualDay} ${entry.day}`;
 
   return (
     <section className="panel" aria-labelledby="manual-expenses">
       <h2 id="manual-expenses">{copy.manualExpenses}</h2>
-      <p>{copy.manualExpensesHelp}</p>
+      <Help label={copy.howItWorks}>{copy.manualExpensesHelp}</Help>
       {status && <p role="status">{copy[status]}</p>}
       {entries.length > 0 && (
         <div className="table-wrap">
@@ -162,9 +169,7 @@ export function ManualExpenses({
                     </div>
                   </td>
                   <td>{formatMoney(entry.amount, entry.currency, locale)}</td>
-                  <td>
-                    {period(entry)} · {copy.manualDay} {entry.day}
-                  </td>
+                  <td>{period(entry)}</td>
                   <td>
                     {entry.category
                       ? categoryPath(categories, entry.category)
@@ -180,6 +185,12 @@ export function ManualExpenses({
                           onSelect: () => {
                             setEditing(entry);
                             setFormItem("");
+                            setRecurring(!oneOff(entry));
+                            setBox(
+                              entry.savings_box
+                                ? `${entry.item}|${entry.savings_box}`
+                                : "",
+                            );
                             setFormOpen(true);
                           },
                         },
@@ -203,6 +214,8 @@ export function ManualExpenses({
         onClick={() => {
           setEditing(undefined);
           setFormItem("");
+          setRecurring(false);
+          setBox("");
           setFormOpen(true);
         }}
       >
@@ -245,54 +258,47 @@ export function ManualExpenses({
             />
           </label>
           <label>
-            {copy.manualDay}
-            <input
-              name="day"
-              type="number"
-              min={1}
-              max={31}
-              required
-              defaultValue={editing?.day ?? 5}
-              disabled={busy}
-            />
-          </label>
-          <label>
-            {copy.connection}
+            {copy.paidFromSavingsBox}
             <select
-              name="item"
-              required
-              value={formItem || editing?.item || connections[0]?.id || ""}
-              onChange={(event) => setFormItem(event.target.value)}
+              value={box}
+              onChange={(event) => {
+                setBox(event.target.value);
+                if (event.target.value)
+                  setFormItem(event.target.value.split("|")[0]);
+              }}
               disabled={busy}
             >
-              {connections.map((connection) => (
-                <option key={connection.id} value={connection.id}>
-                  {connection.label}
+              <option value="">{copy.notFromSavingsBox}</option>
+              {boxes.map((row) => (
+                <option
+                  key={`${row.item}|${row.name}`}
+                  value={`${row.item}|${row.name}`}
+                >
+                  {row.name}
+                  {new Set(boxes.map((other) => other.item)).size > 1 &&
+                    ` · ${labels.get(row.item) ?? copy.connection}`}
                 </option>
               ))}
             </select>
           </label>
-          <label>
-            {copy.paidFromSavingsBox}
-            <select
-              name="savings_box"
-              defaultValue={editing?.savings_box ?? ""}
-              disabled={busy}
-            >
-              <option value="">{copy.notFromSavingsBox}</option>
-              {boxes
-                .filter(
-                  (box) =>
-                    box.item ===
-                    (formItem || editing?.item || connections[0]?.id),
-                )
-                .map((box) => (
-                  <option key={box.name} value={box.name}>
-                    {box.name}
+          {!box && (
+            <label>
+              {copy.connection}
+              <select
+                name="item"
+                required
+                value={formItem || editing?.item || connections[0]?.id || ""}
+                onChange={(event) => setFormItem(event.target.value)}
+                disabled={busy}
+              >
+                {connections.map((connection) => (
+                  <option key={connection.id} value={connection.id}>
+                    {connection.label}
                   </option>
                 ))}
-            </select>
-          </label>
+              </select>
+            </label>
+          )}
           <label>
             {copy.category}
             <select
@@ -315,36 +321,63 @@ export function ManualExpenses({
               ))}
             </select>
           </label>
-          <label>
-            {copy.manualStart}
-            <input
-              name="start"
-              type="month"
-              required
-              defaultValue={editing?.start}
-              disabled={busy}
-            />
-          </label>
           <label className="checkbox">
             <input
-              name="recurring"
               type="checkbox"
-              defaultChecked={editing ? editing.end !== editing.start : true}
+              checked={recurring}
+              onChange={(event) => setRecurring(event.target.checked)}
               disabled={busy}
             />
             {copy.manualRecurring}
           </label>
-          <label>
-            {copy.manualEnd}
-            <input
-              name="end"
-              type="month"
-              defaultValue={
-                editing?.end === editing?.start ? "" : (editing?.end ?? "")
-              }
-              disabled={busy}
-            />
-          </label>
+          {recurring ? (
+            <>
+              <label>
+                {copy.manualDay}
+                <input
+                  name="day"
+                  type="number"
+                  min={1}
+                  max={31}
+                  required
+                  defaultValue={editing?.day ?? 5}
+                  disabled={busy}
+                />
+              </label>
+              <label>
+                {copy.manualStart}
+                <input
+                  name="start"
+                  type="month"
+                  required
+                  defaultValue={editing?.start}
+                  disabled={busy}
+                />
+              </label>
+              <label>
+                {copy.manualEnd}
+                <input
+                  name="end"
+                  type="month"
+                  defaultValue={
+                    editing && !oneOff(editing) ? (editing.end ?? "") : ""
+                  }
+                  disabled={busy}
+                />
+              </label>
+            </>
+          ) : (
+            <label>
+              {copy.manualDate}
+              <input
+                name="date"
+                type="date"
+                required
+                defaultValue={editing && day(editing)}
+                disabled={busy}
+              />
+            </label>
+          )}
           <label>
             {copy.manualCnpj}
             <input

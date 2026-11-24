@@ -3,6 +3,7 @@ import { summarizeBankBalances } from "./balance-summary";
 import { BalanceSummary } from "./balance-summary-view";
 import { formatReportedValue, messages, type Locale } from "./locale";
 import { SnapshotView, type Snapshot } from "./snapshot";
+import { Help } from "./ui";
 
 type Account = {
   id: string;
@@ -45,7 +46,7 @@ export function AccountsView({ locale }: { locale: Locale }) {
         <>
           <section className="panel" aria-labelledby="balances">
             <h2 id="balances">{copy.reportedBalances}</h2>
-            <p>{copy.balanceHelp}</p>
+            <Help label={copy.howItWorks}>{copy.balanceHelp}</Help>
             {!snapshot.truncated && (
               <BalanceSummary
                 summary={summarizeBankBalances(snapshot.accounts)}

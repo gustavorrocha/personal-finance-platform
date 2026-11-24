@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { formatDate, formatMoney, messages, type Locale } from "./locale";
+import { Help } from "./ui";
 
 const PERIODS = ["month", "3m", "6m", "12m", "ytd"] as const;
 type Period = (typeof PERIODS)[number];
@@ -84,12 +85,12 @@ export function InvestmentReturns({
           : row.name;
   return (
     <>
-      <p>
+      <Help label={copy.howItWorks}>
         {copy.investmentReturnsHelp.replace(
           "{date}",
           formatDate(data.end, locale),
         )}
-      </p>
+      </Help>
       <ReturnsChart
         series={data.series}
         locale={locale}

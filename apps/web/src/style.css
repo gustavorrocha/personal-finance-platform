@@ -940,3 +940,169 @@ tr.returns-benchmark th,
 tr.returns-benchmark td {
   color: #42594f;
 }
+.help {
+  margin: -0.4rem 0 1rem;
+  font-size: 0.825rem;
+}
+.help summary {
+  width: fit-content;
+  color: #42594f;
+}
+.help p {
+  max-width: 70ch;
+  margin: 0.4rem 0 0;
+}
+.swatch.spent {
+  background: #b5523b;
+}
+.swatch.line-current,
+.swatch.line-usual {
+  min-height: 0;
+  width: 1rem;
+  height: 0;
+  border-radius: 0;
+  border-top: 2px solid #0a6849;
+}
+.swatch.line-usual {
+  border-top: 2px dashed #8fa396;
+}
+.headline {
+  font-size: 1rem !important;
+  color: #152d25;
+}
+.headline .over {
+  color: #a3412b;
+}
+.headline .under {
+  color: #0a6849;
+}
+.plot {
+  position: relative;
+}
+.plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.plot .grid line {
+  stroke: #e3eae3;
+}
+.plot text {
+  fill: #42594f;
+  font-size: 11px;
+  text-anchor: end;
+}
+.plot text.axis {
+  text-anchor: middle;
+}
+.plot .line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.plot .line.current {
+  stroke: #0a6849;
+}
+.plot .line.usual {
+  stroke: #8fa396;
+  stroke-dasharray: 5 4;
+}
+.plot .crosshair {
+  stroke: #a4b6a9;
+}
+.plot .dot.current {
+  fill: #0a6849;
+  stroke: #fff;
+  stroke-width: 2;
+}
+.plot-tooltip {
+  position: absolute;
+  top: 0;
+  min-width: 10rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #d4ded4;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(21 45 37 / 12%);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.plot-tooltip > * {
+  display: block;
+}
+.pair-plot {
+  position: relative;
+}
+.pair-plot .zero {
+  position: absolute;
+  inset-inline: 0;
+  border-top: 1px solid #8fa396;
+}
+.pair-plot .swatch {
+  position: absolute;
+  width: 32%;
+  min-height: 0;
+  border-radius: 4px 4px 0 0;
+}
+.pair-plot .swatch.spent {
+  left: 16%;
+}
+.pair-plot .swatch.invested {
+  left: 52%;
+}
+.pair-plot .swatch.negative {
+  border-radius: 0 0 4px 4px;
+}
+.pending-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.pending-summary ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.button-link {
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.35rem;
+  background: #183b2f;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 650;
+}
+.count {
+  margin-inline-start: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 1rem;
+  background: #a3412b;
+  color: #fff;
+  font-size: 0.75rem;
+}
+.settings-link {
+  margin-inline-start: auto;
+}
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+  gap: 1rem;
+}
+.chart-grid > .panel {
+  margin-top: 1rem;
+}
+.category-name {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.toggle {
+  padding: 0 0.3rem;
+  border: 0;
+  background: none;
+}

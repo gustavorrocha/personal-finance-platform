@@ -181,6 +181,7 @@ async def spending(
         "month": month,
         "totals": [],
         "history": [],
+        "daily": [],
         "investments": [],
         "invested": [],
         "invested_history": [],
@@ -244,6 +245,16 @@ async def spending(
         "FROM analytics.pending_card_spending) "
         f"{in_window}GROUP BY month, currency, source, status, category, subcategory "
         "ORDER BY month, currency, source, status, category, subcategory FORMAT JSONEachRow",
+        **window,
+    )
+    # Spending per day, for the pace of each month against the previous ones.
+    result["daily"] = await dashboard_query(
+        "SELECT toString(economic_date) AS day, currency, toString(sum(amount)) AS total "
+        "FROM (SELECT item_key, economic_date, currency, toDecimal128(net_amount, 12) AS amount "
+        "FROM analytics.spending_dashboard WHERE included "
+        "UNION ALL SELECT item_key, economic_date, currency, toDecimal128(amount, 12) "
+        "FROM analytics.pending_card_spending) "
+        f"{in_window}GROUP BY day, currency ORDER BY day, currency FORMAT JSONEachRow",
         **window,
     )
     result["investments"] = await dashboard_query(

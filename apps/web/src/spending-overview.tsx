@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { formatDate, formatMoney, messages, type Locale } from "./locale";
+import { Help } from "./ui";
 import {
   categoryComparison,
   change,
@@ -142,7 +143,7 @@ export function MonthlyComparison({
   const copy = messages[locale];
   return (
     <>
-      <p>{copy.monthlyComparisonHelp}</p>
+      <Help label={copy.howItWorks}>{copy.monthlyComparisonHelp}</Help>
       <Legend locale={locale} />
       {currencies(rows).map((currency) => {
         const months = monthlyTotals(rows, currency, end, 13);
@@ -287,6 +288,8 @@ export function CategoryComparison({
   disabled: boolean;
 }) {
   const copy = messages[locale];
+  // Categories whose subcategories are shown ("currency|category").
+  const [open, setOpen] = useState<string[]>([]);
   return (
     <>
       <ul className="legend">
@@ -312,66 +315,91 @@ export function CategoryComparison({
         return (
           <div className="chart" key={currency}>
             <h3>{currency}</h3>
-            {entries.map((group) => (
-              <div className="category-block" key={group.category}>
-                {[
-                  { ...group, parent: group.category, child: false },
-                  ...group.subcategories.map((row) => ({
-                    ...row,
-                    parent: group.category,
-                    child: true,
-                  })),
-                ].map((row) => (
-                  <div
-                    className={row.child ? "compare child" : "compare"}
-                    key={`${row.child}-${row.category}`}
-                    title={`${copy.previousMonth}: ${money(row.previous)}`}
-                  >
-                    <button
-                      type="button"
-                      className="link-button"
-                      disabled={disabled}
-                      aria-label={`${copy.showExpensesOf} ${
-                        row.child
-                          ? `${row.parent || copy.uncategorized} › ${row.category || copy.noSubcategory}`
-                          : row.category || copy.uncategorized
-                      }`}
-                      onClick={() =>
-                        row.child
-                          ? onSelect(row.parent, row.category)
-                          : onSelect(row.category)
-                      }
+            {entries.map((group) => {
+              const id = `${currency}|${group.category}`;
+              const expanded = open.includes(id);
+              return (
+                <div className="category-block" key={group.category}>
+                  {[
+                    { ...group, parent: group.category, child: false },
+                    ...(expanded ? group.subcategories : []).map((row) => ({
+                      ...row,
+                      parent: group.category,
+                      child: true,
+                    })),
+                  ].map((row) => (
+                    <div
+                      className={row.child ? "compare child" : "compare"}
+                      key={`${row.child}-${row.category}`}
+                      title={`${copy.previousMonth}: ${money(row.previous)}`}
                     >
-                      {row.category ||
-                        (row.child ? copy.noSubcategory : copy.uncategorized)}
-                    </button>
-                    <span className="compare-bars" aria-hidden="true">
-                      <i
-                        className="swatch bank"
-                        style={{ width: width(row.current) }}
-                      />
-                      <i
-                        className="swatch previous"
-                        style={{ width: width(row.previous) }}
-                      />
-                    </span>
-                    <span>
-                      {money(row.current)}
-                      <small>
-                        {copy.previousMonth}: {money(row.previous)}
-                      </small>
-                    </span>
-                    <span>
-                      <ChangeText
-                        current={row.current}
-                        previous={row.previous}
-                        locale={locale}
-                      />
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ))}
+                      <span className="category-name">
+                        {!row.child && group.subcategories.length > 0 && (
+                          <button
+                            type="button"
+                            className="icon-button toggle"
+                            aria-expanded={expanded}
+                            aria-label={`${copy.subcategories}: ${row.category || copy.uncategorized}`}
+                            onClick={() =>
+                              setOpen((current) =>
+                                expanded
+                                  ? current.filter((value) => value !== id)
+                                  : [...current, id],
+                              )
+                            }
+                          >
+                            {expanded ? "▾" : "▸"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="link-button"
+                          disabled={disabled}
+                          aria-label={`${copy.showExpensesOf} ${
+                            row.child
+                              ? `${row.parent || copy.uncategorized} › ${row.category || copy.noSubcategory}`
+                              : row.category || copy.uncategorized
+                          }`}
+                          onClick={() =>
+                            row.child
+                              ? onSelect(row.parent, row.category)
+                              : onSelect(row.category)
+                          }
+                        >
+                          {row.category ||
+                            (row.child
+                              ? copy.noSubcategory
+                              : copy.uncategorized)}
+                        </button>
+                      </span>
+                      <span className="compare-bars" aria-hidden="true">
+                        <i
+                          className="swatch bank"
+                          style={{ width: width(row.current) }}
+                        />
+                        <i
+                          className="swatch previous"
+                          style={{ width: width(row.previous) }}
+                        />
+                      </span>
+                      <span>
+                        {money(row.current)}
+                        <small>
+                          {copy.previousMonth}: {money(row.previous)}
+                        </small>
+                      </span>
+                      <span>
+                        <ChangeText
+                          current={row.current}
+                          previous={row.previous}
+                          locale={locale}
+                        />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -428,7 +456,7 @@ export function InvestmentComparison({
   const copy = messages[locale];
   return (
     <>
-      <p>{copy.investmentComparisonHelp}</p>
+      <Help label={copy.howItWorks}>{copy.investmentComparisonHelp}</Help>
       {investmentCurrencies(rows).map((currency) => {
         const months = monthlyInvestments(rows, currency, end);
         const max = Math.max(1, ...months.map((entry) => Math.abs(entry.net)));
@@ -607,11 +635,32 @@ export function InvestedEvolution({
   locale: Locale;
 }) {
   const copy = messages[locale];
+  const [share, setShare] = useState(false);
   const label = (row: { key: string; name: string }) =>
     row.key ? row.name : copy.unclassifiedInvestment;
+  const percent = new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 1,
+  });
   return (
     <>
-      <p>{copy.investedEvolutionHelp}</p>
+      <Help label={copy.howItWorks}>{copy.investedEvolutionHelp}</Help>
+      <div className="returns-mode" role="group" aria-label={copy.chartMode}>
+        <button
+          type="button"
+          aria-pressed={!share}
+          onClick={() => setShare(false)}
+        >
+          {copy.amountsMode}
+        </button>
+        <button
+          type="button"
+          aria-pressed={share}
+          onClick={() => setShare(true)}
+        >
+          {copy.allocationMode}
+        </button>
+      </div>
       {gaps.length > 0 && (
         <div className="notice" role="note">
           <p>
@@ -692,7 +741,8 @@ export function InvestedEvolution({
                     {series.map(([index, name]) =>
                       entry.values[index] ? (
                         <span key={index}>
-                          {name}: {money(entry.values[index])}
+                          {name}: {money(entry.values[index])} (
+                          {percent.format(entry.values[index] / entry.total)})
                         </span>
                       ) : null,
                     )}
@@ -703,7 +753,13 @@ export function InvestedEvolution({
                   <span className="month-plot" aria-hidden="true">
                     <span
                       className="month-stack"
-                      style={{ height: `${(entry.total / max) * 100}%` }}
+                      style={{
+                        height: share
+                          ? entry.total > 0
+                            ? "100%"
+                            : 0
+                          : `${(entry.total / max) * 100}%`,
+                      }}
                     >
                       {[...series].reverse().map(([index]) => (
                         <span

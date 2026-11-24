@@ -158,3 +158,43 @@ export function monthlyInvestments(
     return total;
   });
 }
+
+export type DailyRow = { day: string; currency: string; total: string };
+
+// Months averaged for the usual pace.
+export const PACE_MONTHS = 6;
+export function daysIn(month: string) {
+  const [year, value] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, value, 0)).getUTCDate();
+}
+
+/** Cumulative spending through each day of `month`, one value per day. */
+export function cumulative(rows: DailyRow[], currency: string, month: string) {
+  const values = new Array<number>(daysIn(month)).fill(0);
+  for (const row of rows)
+    if (row.currency === currency && row.day.startsWith(month))
+      values[Number(row.day.slice(8)) - 1] += Number(row.total);
+  for (let index = 1; index < values.length; index++)
+    values[index] += values[index - 1];
+  return values;
+}
+
+/** Average cumulative spending per day over the previous months that had any. */
+export function usualPace(rows: DailyRow[], currency: string, month: string) {
+  const months = Array.from({ length: PACE_MONTHS }, (_, index) =>
+    previousMonth(month, index + 1),
+  ).filter((slot) =>
+    rows.some((row) => row.currency === currency && row.day.startsWith(slot)),
+  );
+  const curves = months.map((slot) => cumulative(rows, currency, slot));
+  const length = daysIn(month);
+  const average = Array.from({ length }, (_, day) =>
+    curves.length
+      ? curves.reduce(
+          (sum, curve) => sum + curve[Math.min(day, curve.length - 1)],
+          0,
+        ) / curves.length
+      : 0,
+  );
+  return { months: months.length, average };
+}

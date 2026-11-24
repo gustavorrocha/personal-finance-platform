@@ -16,6 +16,7 @@ export function SnapshotView<T extends Snapshot>({
   loadingText,
   errorText,
   emptyText,
+  nested = false,
   children,
 }: {
   locale: Locale;
@@ -24,6 +25,8 @@ export function SnapshotView<T extends Snapshot>({
   loadingText: string;
   errorText: string;
   emptyText: string;
+  /** Part of another page: a section with a second-level heading. */
+  nested?: boolean;
   children: (snapshot: T) => ReactNode;
 }) {
   const [item, setItem] = useState("");
@@ -32,6 +35,8 @@ export function SnapshotView<T extends Snapshot>({
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
   const copy = messages[locale];
+  const Root = nested ? "section" : "main";
+  const Heading = nested ? "h2" : "h1";
   const number = new Intl.NumberFormat(locale);
   const connections = visibleConnections(snapshot?.connections ?? []);
   const selected = connections.some(({ id }) => id === snapshot?.selected?.id)
@@ -61,9 +66,9 @@ export function SnapshotView<T extends Snapshot>({
   }, [path, item, retry]);
 
   return (
-    <main className="frame" aria-busy={loading}>
+    <Root className="frame" aria-busy={loading}>
       <div className="intro">
-        <h1>{title}</h1>
+        <Heading>{title}</Heading>
         <label>
           {copy.connection}
           <select
@@ -103,6 +108,6 @@ export function SnapshotView<T extends Snapshot>({
             {connections.length ? copy.selectConnection : emptyText}
           </p>
         ))}
-    </main>
+    </Root>
   );
 }

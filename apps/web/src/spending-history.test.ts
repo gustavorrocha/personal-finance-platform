@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   categoryComparison,
+  cumulative,
+  usualPace,
   monthlyInvestments,
   change,
   monthlyTotals,
@@ -120,4 +122,21 @@ test("investment months net contributions against withdrawals", () => {
       net: 70,
     },
   ]);
+});
+
+test("the month's pace accumulates by day against the previous months' average", () => {
+  const rows = [
+    { day: "2026-09-02", currency: "BRL", total: "100" },
+    { day: "2026-09-30", currency: "BRL", total: "50" },
+    { day: "2026-10-01", currency: "BRL", total: "300" },
+    { day: "2026-11-03", currency: "BRL", total: "20" },
+    { day: "2026-11-03", currency: "USD", total: "9" },
+  ];
+  const current = cumulative(rows, "BRL", "2026-11");
+  assert.equal(current.length, 30);
+  assert.deepEqual(current.slice(0, 4), [0, 0, 20, 20]);
+  const { months, average } = usualPace(rows, "BRL", "2026-11");
+  assert.equal(months, 2);
+  // Day 1: (0 + 300) / 2; day 2: (100 + 300) / 2; day 30: (150 + 300) / 2.
+  assert.deepEqual([average[0], average[1], average[29]], [150, 200, 225]);
 });
