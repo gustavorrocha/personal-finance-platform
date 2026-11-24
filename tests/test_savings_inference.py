@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from finance_api.savings_inference import suggest
 
@@ -106,18 +106,6 @@ def test_an_observed_drop_keeps_its_exact_amount_and_is_named_by_a_fitting_bill(
     # A drop no bill explains stays in Debit review only.
     odd = suggest(boxes, FLOWS, payments, set(), TODAY, [{**drop, "amount": "120"}])
     assert not [row for row in odd["suggestions"] if row["kind"] == "observed"]
-    # Yield earned between the two balances hid part of the bill: it is added back.
-    grown = suggest(
-        boxes,
-        FLOWS,
-        payments,
-        set(),
-        TODAY,
-        [{**drop, "amount": "950", "previous_balance": "10000"}],
-    )
-    rate = grown["daily_rate"]
-    (row,) = [row for row in grown["suggestions"] if row["kind"] == "observed"]
-    assert row["amount"] == round(950 + 10000 * ((1 + rate) ** 3 - 1), 2) > 950
 
 
 def test_an_estimated_payment_must_leave_money_for_every_later_withdrawal():
@@ -153,3 +141,46 @@ def test_an_estimated_payment_must_leave_money_for_every_later_withdrawal():
     result = suggest(BOXES, flows, payments, set(), TODAY)
     assert result["suggestions"] == []
     assert next(gap for gap in result["gaps"] if gap["box"] == "Gastos")["amount"] > 990
+
+
+def test_box_yield_follows_the_cdi_on_business_days():
+    # 0.1% a business day at 120% of the CDI: only weekdays earn.
+    cdi = [
+        {"day": str(date(2026, 1, 1) + timedelta(days=n)), "value": "0.1"}
+        for n in range(80)
+        if (date(2026, 1, 1) + timedelta(days=n)).weekday() < 5
+    ]
+    boxes = [{"item": ITEM, "name": "Gastos", "balance": "1000", "pct": "120"}]
+    flows = [FLOWS[0]]  # 1000 in on 2026-01-02, never withdrawn
+    result = suggest(boxes, flows, [], set(), TODAY, [], cdi)
+    business = sum(1 for row in cdi if "2026-01-02" <= row["day"] < "2026-03-20")
+    earned = 1000 * (1 + 0.0012) ** business - 1000
+    # What it should hold minus what it holds: the yield it earned left without a trace.
+    (gap,) = result["gaps"]
+    assert gap["amount"] == round(earned, 2)
+    assert 0.0008 < result["daily_rate"] < 0.0009  # 0.12% on 5 of every 7 days
+
+
+def test_established_bills_continue_after_their_last_month_from_any_connection():
+    today = date(2026, 11, 23)
+    box = {
+        "item": ITEM,
+        "name": "Gastos",
+        "balance": "500",
+        "pct": "120",
+        "observed_since": "2026-11-19",
+    }
+    flows = [{**FLOWS[0], "date": "2026-01-02"}]
+    # Electricity paid from another connection for six months up to August.
+    light = [
+        {**payment("3" * 14, f"2026-{month:02d}-06", "150", "Light"), "item": "other-bank"}
+        for month in range(3, 9)
+    ]
+    # Three months only: it may have ended, so it is not carried forward.
+    short = [payment("4" * 14, f"2026-{month:02d}-08", "38", "Loja") for month in (4, 5, 6)]
+    result = suggest([box], flows, light + short, set(), today)
+    assert [(row["month"], row["payee"], row["item"]) for row in result["suggestions"]] == [
+        ("2026-09", "Light", ITEM),
+        ("2026-10", "Light", ITEM),
+        ("2026-11", "Light", ITEM),
+    ]

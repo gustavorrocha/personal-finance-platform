@@ -797,3 +797,146 @@ th:nth-child(3) {
   background: #fdf0d3;
   color: #7a5200;
 }
+
+/* Investment returns: classes in the series palette, the portfolio in ink, the CDI
+   dashed and neutral. */
+.swatch.returns-portfolio {
+  background: #152d25;
+}
+.swatch.returns-cdi {
+  background: #7a8b83;
+}
+.returns-plot {
+  position: relative;
+}
+.returns-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+}
+.returns-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.returns-line.returns-portfolio {
+  stroke: #152d25;
+  stroke-width: 2.5;
+}
+.returns-line.returns-cdi {
+  stroke: #7a8b83;
+  stroke-dasharray: 5 4;
+}
+.returns-dot {
+  stroke: #fff;
+  stroke-width: 2;
+}
+.returns-dot.returns-portfolio {
+  fill: #152d25;
+}
+.returns-dot.returns-cdi {
+  fill: #7a8b83;
+}
+.returns-line.series-1 {
+  stroke: #2a78d6;
+}
+.returns-dot.series-1 {
+  fill: #2a78d6;
+}
+.returns-line.series-2 {
+  stroke: #eb6834;
+}
+.returns-dot.series-2 {
+  fill: #eb6834;
+}
+.returns-line.series-3 {
+  stroke: #1baf7a;
+}
+.returns-dot.series-3 {
+  fill: #1baf7a;
+}
+.returns-line.series-4 {
+  stroke: #eda100;
+}
+.returns-dot.series-4 {
+  fill: #eda100;
+}
+.returns-line.series-5 {
+  stroke: #e87ba4;
+}
+.returns-dot.series-5 {
+  fill: #e87ba4;
+}
+.returns-line.series-6 {
+  stroke: #008300;
+}
+.returns-dot.series-6 {
+  fill: #008300;
+}
+.returns-zero {
+  stroke: #9fb3a8;
+  stroke-width: 1;
+}
+.returns-grid,
+.returns-cursor {
+  stroke: #e3ebe3;
+  stroke-width: 1;
+}
+.returns-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.returns-mode {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.returns-mode button[aria-pressed="true"] {
+  background: #152d25;
+  color: #fff;
+}
+.returns-label,
+.returns-axis {
+  font-size: 12px;
+  fill: #42594f;
+  dominant-baseline: middle;
+  font-variant-numeric: tabular-nums;
+}
+.returns-tooltip {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  min-width: 11rem;
+  padding: 0.6rem 0.75rem;
+  transform: translateX(-50%);
+  border: 1px solid #d4ded4;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(21 45 37 / 12%);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.returns-tooltip > * {
+  display: block;
+}
+.returns-table td small {
+  display: block;
+  color: #42594f;
+}
+tr.returns-portfolio th,
+tr.returns-portfolio td,
+tr.returns-class th {
+  font-weight: 600;
+}
+tr.returns-position th {
+  padding-left: 1.5rem;
+  font-weight: 400;
+}
+tr.returns-benchmark th,
+tr.returns-benchmark td {
+  color: #42594f;
+}

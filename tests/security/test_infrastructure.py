@@ -59,7 +59,7 @@ def test_secrets_are_files_and_no_remote_ai():
     assert set(COMPOSE["services"]["api"]["secrets"]) == {"api_password", "dashboard_password"}
     assert {
         "source": "dashboard_user",
-        "target": "/etc/clickhouse-server/users.d/investment-classes-dashboard.xml",
+        "target": "/etc/clickhouse-server/users.d/market-prices-dashboard.xml",
     } in COMPOSE["services"]["clickhouse"]["secrets"]
     assert all(
         s["file"].startswith("${FINANCE_PRIVATE_DIR}/secrets/") for s in COMPOSE["secrets"].values()

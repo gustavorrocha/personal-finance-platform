@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from .investment_history import invested_history
+from .investment_history import asset_key, invested_history, invested_returns
 from .local_classifier import (
     BATCH_LIMIT,
     MODEL_TIMEOUT,
@@ -116,6 +116,12 @@ class SuggestionRequest(BaseModel):
 
 def month_start(index: int) -> date:
     return date(index // 12, index % 12 + 1, 1)
+
+
+def clickhouse_array(values) -> str:
+    """An Array(String) query parameter."""
+    escaped = (value.replace("\\", "\\\\").replace("'", "\\'") for value in sorted(values))
+    return "[" + ",".join(f"'{value}'" for value in escaped) + "]"
 
 
 async def dashboard_query(query: str, **parameters: str) -> list[dict]:
@@ -257,7 +263,10 @@ async def spending(
     )
     positions = await dashboard_query(
         "SELECT toString(position_key) AS position, toString(observed_on) AS observed_on, "
-        "type, indexer, name, currency, toString(balance) AS balance "
+        "type, subtype, indexer, toString(rate) AS rate, toString(fixed_rate) AS fixed_rate, "
+        "toString(purchase_date) AS purchase_date, name, currency, "
+        "toString(balance) AS balance, toString(gross) AS gross, "
+        "toString(due_date) AS due_date, symbol "
         f"FROM analytics.investment_position_history WHERE {scope} FORMAT JSONEachRow",
         **filters,
     )
@@ -278,13 +287,25 @@ async def spending(
         **filters,
     )
     classes = await dashboard_query(INVESTMENT_CLASS_LIST)
-    assigned = await dashboard_query(INVESTMENT_ASSIGNMENTS)
+    assigned = {
+        row["position"]: row["class"] for row in await dashboard_query(INVESTMENT_ASSIGNMENTS)
+    }
+    rates = await dashboard_query(
+        "SELECT series, toString(day) AS day, toString(value) AS value FROM "
+        "(SELECT * FROM analytics.market_rates WHERE series IN ('CDI', 'SELIC') "
+        "AND day >= today() - 800) FORMAT JSONEachRow"
+    )
+    prices = await dashboard_query(
+        "SELECT asset, toString(day) AS day, toString(price) AS price FROM "
+        "(SELECT * FROM analytics.market_prices WHERE asset IN {assets:Array(String)} "
+        "AND day >= today() - 800) FORMAT JSONEachRow",
+        assets=clickhouse_array({asset_key(row) for row in positions} - {None}),
+    )
     result["invested_history"], result["invested_gaps"] = invested_history(
-        positions,
-        flows,
-        {row["position"]: row["class"] for row in assigned},
-        classes,
-        result["chart_month"],
+        positions, flows, assigned, classes, result["chart_month"], rates, prices
+    )
+    result["invested_returns"] = invested_returns(
+        positions, flows, assigned, classes, rates, prices
     )
     search = search.strip()
     expense_filters = dict(filters, offset=str((page - 1) * EXPENSE_PAGE_SIZE))
@@ -516,8 +537,7 @@ async def savings_box_suggestions():
     )
     outflows = await dashboard_query(
         "SELECT toString(item_key) AS item, name AS box, toString(previous_day) AS start, "
-        "toString(economic_date) AS end, toString(amount) AS amount, "
-        "toString(previous_balance) AS previous_balance "
+        "toString(economic_date) AS end, toString(amount) AS amount "
         "FROM analytics.savings_box_outflows WHERE item_key != {demo:UUID} FORMAT JSONEachRow",
         demo=DEMO_ITEM,
     )
@@ -535,7 +555,7 @@ async def savings_box_suggestions():
         "if(business_name != '', business_name, merchant_label) AS payee, category_id, "
         "if(subcategory != '', concat(category, ' › ', subcategory), category) AS category "
         "FROM analytics.spending_dashboard WHERE included AND net_amount > 0 AND cnpj != '' "
-        "AND item_key != {demo:UUID} FORMAT JSONEachRow",
+        "AND source = 'bank' AND item_key != {demo:UUID} FORMAT JSONEachRow",
         demo=DEMO_ITEM,
     )
     dismissed = await dashboard_query(
@@ -548,6 +568,10 @@ async def savings_box_suggestions():
         {(row["cnpj"], row["month"]) for row in dismissed},
         date.today(),
         outflows,
+        await dashboard_query(
+            "SELECT toString(day) AS day, toString(value) AS value FROM "
+            "(SELECT * FROM analytics.market_rates WHERE series = 'CDI') FORMAT JSONEachRow"
+        ),
     )
 
 

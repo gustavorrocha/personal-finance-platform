@@ -922,3 +922,81 @@ def test_received_transfers_are_refund_candidates_only():
     assert spending_fields(salary, "tx")["spending_kind"] == ""
     yield_credit = {**friend, "categoryId": "03060000", "category": "Proceeds"}
     assert spending_fields(yield_credit, "tx")["spending_kind"] == ""
+
+
+def test_savings_box_outflows_remove_the_cdi_yield_between_balances(
+    isolated_warehouse, monkeypatch
+):
+    silver = isolated_warehouse()
+    item = item_key(ITEM)
+    silver.execute(
+        "INSERT INTO core.market_rates (series, day, value) VALUES "
+        + ",".join(f"('CDI', '2024-11-{day:02d}', 0.05)" for day in (7, 8, 11, 12, 13, 14))
+    )
+
+    def observe(observed, box_balance, transactions=()):
+        box = {
+            "name": "Reserva",
+            "identification": "box-1",
+            "availableAmounts": [
+                {
+                    "amount": box_balance,
+                    "currencyCode": "BRL",
+                    "remuneration": {"indexer": "CDI", "postFixedIndexerPercentage": 1},
+                }
+            ],
+        }
+        record = {
+            "id": CARD,
+            "type": "BANK",
+            "currencyCode": "BRL",
+            "bankData": {"reservedBalances": [box]},
+        }
+        manifest = silver.lake.commit(
+            run_id=uuid4(),
+            retrieved_at=observed,
+            item_alias=f"item-{item.hex}",
+            capture_kind="full",
+            payloads=[
+                CapturePage(
+                    "items",
+                    json_bytes({"id": ITEM, "status": "UPDATED", "connector": {"id": 123}}),
+                ),
+                CapturePage("accounts", json_bytes({"results": [record]})),
+                CapturePage(
+                    "transactions",
+                    json_bytes({"results": list(transactions)}),
+                    entity_key(item, "accounts", CARD),
+                ),
+            ],
+        )
+        silver.replay(manifest.run_id)
+
+    # Sunday to Wednesday: Monday and Tuesday earn 0.05% each, 100.03 on 100000. The
+    # balance rose by 60, so about 40 left without a reported withdrawal.
+    observe(WHEN, 100000)
+    observe(WHEN + timedelta(days=3), 100060)
+    # 50000 withdrawn the day of that balance, after it was read: the next day's balance
+    # is the rest plus Wednesday's yield, so nothing is missing (the withdrawal counts on
+    # the earlier side, and only the money left earns).
+    withdrawal = {
+        "id": str(uuid4()),
+        "accountId": CARD,
+        "status": "POSTED",
+        "currencyCode": "BRL",
+        "type": "CREDIT",
+        "amount": 50000,
+        "date": "2024-11-13",
+        "description": "Dinheiro retirado Reserva",
+    }
+    observe(WHEN + timedelta(days=4), 50060 * 1.0005, [withdrawal])
+    rows = [
+        json.loads(line)
+        for line in silver.execute(
+            "SELECT toString(expected_yield) AS earned, toString(amount) AS amount "
+            "FROM analytics.savings_box_outflows FORMAT JSONEachRow"
+        ).splitlines()
+    ]
+    assert len(rows) == 1
+    assert Decimal(rows[0]["earned"]) == pytest.approx(Decimal("100.025"), abs=Decimal("0.01"))
+    assert Decimal(rows[0]["amount"]) == pytest.approx(Decimal("40.025"), abs=Decimal("0.01"))

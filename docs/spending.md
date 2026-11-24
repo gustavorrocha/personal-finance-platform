@@ -82,22 +82,33 @@ refund** subtracts one from spending, such as a friend's share of a dinner, and
 asks for its subcategory; **Not a refund** hides it among the decided ones.
 
 **Likely paid from a savings box** turns money that left a box into suggested
-payments. The evidence is always a box balance falling without a reported
-withdrawal:
+payments. The evidence is always money missing from a box without a reported
+withdrawal. Yield follows the Banco Central's daily CDI times the box's
+percentage on business days (without CDI data, a calendar-day rate implied by a
+box whose balance only grew):
 
-- **Observed:** since the box's first stored balance, each drop between two
-  syncs is the previous balance plus reported contributions, minus reported
-  withdrawals, plus the yield expected over those days, minus the new balance.
-  Providers report only the current balance, so one sync a day gives a one-day
-  window. It is suggested when a
-  monthly bill (same CNPJ, stable amount) fits that amount (within 10% of its
-  observed range) and its usual day falls between the syncs; other drops stay in
-  **Debit review**.
+- **Observed:** since the box's first stored balance, what left it between two
+  syncs is the previous balance plus its yield over those business days, plus
+  reported contributions, minus reported withdrawals, minus the new balance
+  (`analytics.savings_box_outflows`, with the yield in `expected_yield`). A
+  payment smaller than the yield credited meanwhile still counts, even though
+  the balance rose. Transactions carry no time, so a contribution or withdrawal
+  dated the day of a stored balance counts before or after it, whichever leaves
+  the least unexplained, and only money still in the box earns yield. Providers
+  report only the current balance, so one sync a day gives a one-day window. It is suggested when a monthly bill (same CNPJ,
+  stable amount) fits that amount (within 10% of its observed range) and its
+  usual day falls between the syncs; other outflows stay in **Debit review**.
 - **Estimated:** before the first stored balance only the total that left is
-  known (yield removed, at the rate implied by a box whose balance only grew).
-  A monthly bill missing from a month inside the period in which it was paid is
-  suggested only if the box keeps enough money, with yield, for every later
-  reported withdrawal and suggested payment, and only up to that total.
+  known (yield removed). A monthly bill missing from a month inside the period
+  in which it was paid is suggested only if the box keeps enough money, with
+  yield, for every later reported withdrawal and suggested payment, and only up
+  to that total. An established bill (seen in six months or more, including the
+  three before its last) is also looked for after its last month, up to the
+  first stored balance; a shorter one may have ended and is not.
+
+Monthly bills are bank debits only (a card charge cannot come out of a box),
+from any connection: a box may pay a bill usually paid from another account,
+and the suggestion is recorded in the box's connection.
 
 **Accept** opens the prefilled payment (description, amount, date, category,
 box, CNPJ) for editing and records it as a manual entry paid from the box;
@@ -167,16 +178,68 @@ in it. **Recent expenses** shows the latest 10; **Show more** opens the full,
 searchable list.
 
 **Invested wealth over time** stacks, for each of the last 12 months, the
-invested money of each investment class. Providers report only current
-balances, so each sync stores the balance of every position and savings box of
-that day. A month with stored balances uses its last one. Earlier months start
-from the next stored balance, minus the purchases and plus the sales reported
-for each position (contributions and withdrawals for a savings box) in between,
-so they show money put in rather than past yield and market value. A position
-that received more than it holds and returned lost the rest without a reported
-withdrawal, such as a bill paid straight from a savings box; the chart warns
-about it and draws it at zero where the estimate would be negative, until those
-payments are registered as manual entries paid from the box.
+invested money of each investment class, valued day by day. Providers report
+only current balances, so each sync stores the balance of every position and
+savings box of that day, gross of the income tax and IOF withheld on redemption.
+Investment balances count for the day before they were observed, as providers
+report the previous close. Other days walk from the nearest stored balance
+through the purchases and sales reported for each position (contributions and
+withdrawals for a savings box) and, for positions that follow a curve, its daily
+yield on business days: the CDI or Selic times the contracted percentage
+(savings boxes included), or the contracted fixed rate over 252 business days
+for CDBs, LCAs and LCIs. Tesouro Direto bonds follow the morning redemption
+price the Tesouro publishes (PU Venda Manhã), matched by title and due date, so
+they are marked to market; on the purchase day they show about 1% less than
+paid, the spread between buying and redemption prices. Funds follow their quota
+in the CVM daily report (matched by CNPJ; subclasses are skipped as ambiguous)
+and stocks and ETFs their B3 closing price (matched by ticker; dividends arrive
+as account transactions, not in the position). A position without a curve or a
+price shows money put in on those days rather than market value. A position that received more than it holds and returned lost the
+rest without a reported withdrawal, such as a bill paid straight from a savings
+box; the chart warns about it and draws it at zero where the estimate would be
+negative, until those payments are registered as manual entries paid from the
+box.
+
+**Investment returns** shows time-weighted returns, gross of income tax, of
+the portfolio, each class and each held position (BRL) for the month, 3, 6 and
+12 months and the year, up to yesterday, next to the CDI and a 12-month
+cumulative chart. A position's daily return comes from its model (its rate
+curve or public price), not from changes in its balance, so contributions,
+withdrawals and payments made straight from a savings box are neither gains
+nor losses; a Tesouro coupon payment counts as earned instead of as the price
+drop it causes. A class or the portfolio averages its positions weighted by the
+previous day's value. Positions without a rate or public price are left out and
+listed below the table. A position held for less than a period shows its return
+since it was bought, and every row's share of the CDI compares it with the CDI
+compounded over the days that row was held. The chart draws the cumulative
+12-month return of the portfolio, the CDI and each class, each line starting on
+the first day its class held something (nothing is drawn before), with
+percentage gridlines. Its **vs CDI** view draws each line's lead over the CDI
+compounded on the same days instead, so the CDI is the zero line and classes
+that entered mid-year compare fairly. Classes keep the colors and order of the
+invested wealth chart; end labels appear only up to four lines, the tooltip and
+table always.
+
+`finance market-sync` downloads the last ten years of the public CDI, Selic and
+IPCA series from the Banco Central (SGS) into `core.market_rates`, and of every
+Tesouro Direto bond's prices from the Tesouro Transparente into
+`core.market_prices`, together with the last 13 months of the CVM daily fund
+report and B3 historical quotes, keeping only the funds and tickers held. Those
+are monthly or daily files for the whole market, never anything tied to a
+holding. `core.market_downloads` remembers the files already read for the
+current set of holdings, so later runs fetch only new files (and the CVM's last
+two months, which it still revises); buying a new fund or ticker fetches its
+history again.
+
+One source is asked by name: a held ticker with no price in B3's files over the
+last 30 days (an ETF B3 leaves out of its historical files) gets its daily
+closes from Yahoo Finance's chart endpoint, the one `yfinance` reads, so Yahoo
+sees that ticker. It is not an official API and may change or refuse requests;
+a ticker that fails keeps showing money put in, and the rest of the sync goes
+on. Only closed days are stored (never the bar still trading), and later runs
+ask only for the days after the last one stored. The synthetic demo connection
+is never looked up. Run it after a sync; days
+without a published rate yet reuse the latest one.
 
 **Investment classes** (on the **Categories** page) start as Renda fixa -
 Inflação, Renda fixa - CDI, Renda fixa - Pré, Cotas de fundos, ETF renda fixa
