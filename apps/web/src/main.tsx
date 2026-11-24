@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
 import { CategoriesView, categoryPath, type CategoryNode } from "./categories";
@@ -16,6 +16,7 @@ import { Menu, Toast, Help } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
   CategoryComparison,
+  CategoryMonthsTable,
   InvestmentComparison,
   InvestedEvolution,
   type InvestedGap,
@@ -155,6 +156,8 @@ function App() {
     editable: boolean;
   }>();
   const [filter, setFilter] = useState<CategoryFilter>();
+  // A filter picked together with another month, applied once that month loads.
+  const nextFilter = useRef<CategoryFilter>(undefined);
   const [expanded, setExpanded] = useState(false);
   const [suggestionStatus, setSuggestionStatus] = useState<
     "suggestionsReady" | "noSuggestions" | "suggestionsUnavailable"
@@ -215,8 +218,9 @@ function App() {
   }, [item, month, search, page, revision, view, filter]);
 
   useEffect(() => {
-    setFilter(undefined);
-    setExpanded(false);
+    setFilter(nextFilter.current);
+    setExpanded(nextFilter.current !== undefined);
+    nextFilter.current = undefined;
     setAttempted([]);
     setSuggestions({});
     setSuggestionStatus(undefined);
@@ -855,6 +859,30 @@ function App() {
                   setFilter({ category, subcategory });
                   setPage(1);
                   setExpanded(true);
+                  document
+                    .getElementById("expenses")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }}
+              />
+            </section>
+            <section className="panel" aria-labelledby="category-months">
+              <h2 id="category-months">{copy.categoryMonths}</h2>
+              <Help label={copy.howItWorks}>{copy.categoryMonthsHelp}</Help>
+              <CategoryMonthsTable
+                rows={history}
+                month={data.month ?? ""}
+                end={data.chart_month ?? data.month ?? ""}
+                locale={locale}
+                disabled={saving || suggesting}
+                onSelect={(value, category, subcategory) => {
+                  setPage(1);
+                  if (value === data.month) {
+                    setFilter({ category, subcategory });
+                    setExpanded(true);
+                  } else {
+                    nextFilter.current = { category, subcategory };
+                    setMonth(value);
+                  }
                   document
                     .getElementById("expenses")
                     ?.scrollIntoView({ behavior: "smooth" });

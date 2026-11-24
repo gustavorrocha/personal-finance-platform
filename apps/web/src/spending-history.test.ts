@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   categoryComparison,
+  categoryMonths,
   cumulative,
   usualPace,
   monthlyInvestments,
@@ -139,4 +140,32 @@ test("the month's pace accumulates by day against the previous months' average",
   assert.equal(months, 2);
   // Day 1: (0 + 300) / 2; day 2: (100 + 300) / 2; day 30: (150 + 300) / 2.
   assert.deepEqual([average[0], average[1], average[29]], [150, 200, 225]);
+});
+
+test("category months spread each category and subcategory over the window", () => {
+  const data: HistoryRow[] = [
+    { ...row("2023-12", "bank", "POSTED", "Home", "10"), subcategory: "Rent" },
+    { ...row("2024-01", "card", "POSTED", "Home", "4"), subcategory: "Power" },
+    { ...row("2024-01", "bank", "POSTED", "Home", "6"), subcategory: "Rent" },
+    row("2024-01", "card", "PENDING", "Food", "30"),
+    row("2023-06", "bank", "POSTED", "Food", "99"),
+    { ...row("2024-01", "bank", "POSTED", "Food", "5"), currency: "USD" },
+  ];
+  const { months, categories } = categoryMonths(data, "BRL", "2024-01", 3);
+  assert.deepEqual(months, ["2023-11", "2023-12", "2024-01"]);
+  assert.deepEqual(
+    categories.map(({ category, values, total }) => [category, values, total]),
+    [
+      ["Food", [0, 0, 30], 30],
+      ["Home", [0, 10, 10], 20],
+    ],
+  );
+  assert.equal(categories[0].subcategories.length, 0);
+  assert.deepEqual(
+    categories[1].subcategories.map((sub) => [sub.category, sub.values]),
+    [
+      ["Rent", [0, 10, 6]],
+      ["Power", [0, 0, 4]],
+    ],
+  );
 });

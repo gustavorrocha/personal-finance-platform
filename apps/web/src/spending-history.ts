@@ -198,3 +198,65 @@ export function usualPace(rows: DailyRow[], currency: string, month: string) {
   );
   return { months: months.length, average };
 }
+
+export type CategoryMonths = {
+  category: string;
+  values: number[];
+  total: number;
+  subcategories: { category: string; values: number[]; total: number }[];
+};
+
+/** Each category's spending in the `length` months ending at `end`, with its subcategories. */
+export function categoryMonths(
+  rows: HistoryRow[],
+  currency: string,
+  end: string,
+  length = 12,
+): { months: string[]; categories: CategoryMonths[] } {
+  const months = Array.from({ length }, (_, index) =>
+    previousMonth(end, length - 1 - index),
+  );
+  const slots = new Map(months.map((month, index) => [month, index]));
+  const blank = (category: string) => ({
+    category,
+    values: new Array<number>(length).fill(0),
+    total: 0,
+  });
+  const categories = new Map<
+    string,
+    ReturnType<typeof blank> & {
+      children: Map<string, ReturnType<typeof blank>>;
+    }
+  >();
+  for (const row of rows) {
+    const slot = slots.get(row.month);
+    if (slot === undefined || row.currency !== currency) continue;
+    const amount = Number(row.total);
+    const entry = categories.get(row.category) ?? {
+      ...blank(row.category),
+      children: new Map(),
+    };
+    const name = row.subcategory ?? "";
+    const child = entry.children.get(name) ?? blank(name);
+    for (const target of [entry, child]) {
+      target.values[slot] += amount;
+      target.total += amount;
+    }
+    entry.children.set(name, child);
+    categories.set(row.category, entry);
+  }
+  const byTotal = (a: { total: number }, b: { total: number }) =>
+    b.total - a.total;
+  return {
+    months,
+    categories: [...categories.values()]
+      .map(({ children, ...entry }) => ({
+        ...entry,
+        subcategories:
+          children.size === 1 && children.has("")
+            ? []
+            : [...children.values()].sort(byTotal),
+      }))
+      .sort(byTotal),
+  };
+}

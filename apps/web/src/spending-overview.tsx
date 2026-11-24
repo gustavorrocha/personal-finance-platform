@@ -3,6 +3,7 @@ import { formatDate, formatMoney, messages, type Locale } from "./locale";
 import { Help } from "./ui";
 import {
   categoryComparison,
+  categoryMonths,
   change,
   currencies,
   monthlyInvestments,
@@ -816,4 +817,141 @@ export function InvestedEvolution({
       })}
     </>
   );
+}
+
+/** Categories down, months across; each cell shaded by its share of the largest one. */
+export function CategoryMonthsTable({
+  rows,
+  month,
+  end,
+  locale,
+  disabled,
+  onSelect,
+}: Props & {
+  end: string;
+  disabled: boolean;
+  onSelect: (month: string, category: string, subcategory?: string) => void;
+}) {
+  const copy = messages[locale];
+  const [open, setOpen] = useState<string[]>([]);
+  const short = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+  return currencies(rows).map((currency) => {
+    const { months, categories } = categoryMonths(rows, currency, end);
+    if (!categories.length) return null;
+    const active = months.filter((_, index) =>
+      categories.some((row) => row.values[index] > 0),
+    ).length;
+    const max = Math.max(1, ...categories.flatMap((row) => row.values));
+    const money = (value: number) =>
+      formatMoney(String(value), currency, locale);
+    return (
+      <div className="chart" key={currency}>
+        <h3>{currency}</h3>
+        <div className="table-wrap">
+          <table className="heatmap">
+            <thead>
+              <tr>
+                <th scope="col">{copy.category}</th>
+                {months.map((slot) => (
+                  <th
+                    scope="col"
+                    key={slot}
+                    className={slot === month ? "selected" : undefined}
+                  >
+                    {monthLabel(slot, locale)}
+                  </th>
+                ))}
+                <th scope="col">{copy.monthlyAverage}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.flatMap((group) => {
+                const id = `${currency}|${group.category}`;
+                const expanded = open.includes(id);
+                return [
+                  { ...group, child: false },
+                  ...(expanded ? group.subcategories : []).map((row) => ({
+                    ...row,
+                    subcategories: [],
+                    child: true,
+                  })),
+                ].map((row) => {
+                  const name =
+                    row.category ||
+                    (row.child ? copy.noSubcategory : copy.uncategorized);
+                  return (
+                    <tr
+                      key={`${group.category}|${row.child}|${row.category}`}
+                      className={row.child ? "child" : undefined}
+                    >
+                      <th scope="row">
+                        {!row.child && group.subcategories.length > 0 && (
+                          <button
+                            type="button"
+                            className="icon-button toggle"
+                            aria-expanded={expanded}
+                            aria-label={`${copy.subcategories}: ${name}`}
+                            onClick={() =>
+                              setOpen((current) =>
+                                expanded
+                                  ? current.filter((value) => value !== id)
+                                  : [...current, id],
+                              )
+                            }
+                          >
+                            {expanded ? "▾" : "▸"}
+                          </button>
+                        )}
+                        {name}
+                      </th>
+                      {row.values.map((value, index) => {
+                        const share = value / max;
+                        return (
+                          <td
+                            key={months[index]}
+                            className={
+                              months[index] === month ? "selected" : undefined
+                            }
+                          >
+                            {value > 0 ? (
+                              <button
+                                type="button"
+                                className={share > 0.55 ? "cell dark" : "cell"}
+                                style={{
+                                  background: `color-mix(in srgb, #2a78b5 ${Math.round(8 + share * 92)}%, transparent)`,
+                                }}
+                                title={`${name} · ${monthLabel(months[index], locale, true)}: ${money(value)}`}
+                                aria-label={`${copy.showExpensesOf} ${name}, ${monthLabel(months[index], locale, true)}: ${money(value)}`}
+                                disabled={disabled}
+                                onClick={() =>
+                                  row.child
+                                    ? onSelect(
+                                        months[index],
+                                        group.category,
+                                        row.category,
+                                      )
+                                    : onSelect(months[index], row.category)
+                                }
+                              >
+                                {short.format(value)}
+                              </button>
+                            ) : (
+                              <span className="cell empty">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className="average">
+                        {short.format(row.total / Math.max(1, active))}
+                      </td>
+                    </tr>
+                  );
+                });
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  });
 }

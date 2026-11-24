@@ -284,5 +284,8 @@
   "accountToggle": "Count {name} in balances and spending",
   "accountDisabled": "Disabled",
   "accountToggleError": "The account could not be changed. Try again.",
-  "disabledAccountsHelp": "A disabled account stays out of balance totals and spending. Its history is kept, and you can turn it back on at any time."
+  "disabledAccountsHelp": "A disabled account stays out of balance totals and spending. Its history is kept, and you can turn it back on at any time.",
+  "categoryMonths": "Categories by month",
+  "categoryMonthsHelp": "Spending per category in the last 12 months. Darker cells are larger amounts; click a cell to see its expenses, or a category arrow to open its subcategories.",
+  "monthlyAverage": "Monthly average"
 }

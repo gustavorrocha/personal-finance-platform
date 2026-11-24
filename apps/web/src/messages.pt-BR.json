@@ -285,7 +285,10 @@
     "accountToggle": "833ec4a08086207e64343162bc04820346c527b4290708ff27f206f899ec4a68",
     "accountDisabled": "75081b593d15cf6e631971bc6768723f593b88b172477e40ae7d363e4829816d",
     "accountToggleError": "04abe91baea8a8c925d2c0fb3f83fc64ca3fe646e5dd2b5c49f37f265db0a44c",
-    "disabledAccountsHelp": "1131f3e4e411775ce37e3fb62b152a7b9dd1141a87995e238e614eee408f8b4d"
+    "disabledAccountsHelp": "1131f3e4e411775ce37e3fb62b152a7b9dd1141a87995e238e614eee408f8b4d",
+    "categoryMonths": "bac9b2d6b83d2bf2c610e69763956b0aa2033a22514fd0621f059d2c85098775",
+    "categoryMonthsHelp": "2c135f05c8d936d1997fe7de5af326994f5e2b9e62dd5f7e4d3ff8ae2e4d3464",
+    "monthlyAverage": "0aa505a022af64d34b218a0244945d9f09ca46b817759d28e148f34f5c40c9aa"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -573,6 +576,9 @@
     "accountToggle": "Considerar {name} nos saldos e gastos",
     "accountDisabled": "Desativada",
     "accountToggleError": "Não foi possível alterar a conta. Tente novamente.",
-    "disabledAccountsHelp": "Uma conta desativada fica fora dos totais de saldo e dos gastos. O histórico é mantido e você pode reativá-la a qualquer momento."
+    "disabledAccountsHelp": "Uma conta desativada fica fora dos totais de saldo e dos gastos. O histórico é mantido e você pode reativá-la a qualquer momento.",
+    "categoryMonths": "Categorias por mês",
+    "categoryMonthsHelp": "Gastos de cada categoria nos últimos 12 meses. Quanto mais escura a célula, maior o valor; clique numa célula para ver os gastos dela, ou na seta da categoria para abrir as subcategorias.",
+    "monthlyAverage": "Média mensal"
   }
 }
