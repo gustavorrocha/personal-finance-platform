@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from finance_api import accounts
+from finance_api import accounts, spending
 from finance_api.main import app
 from finance_ingestion.collection import collect, entity_key, item_key
 from finance_ingestion.spending_demo import load_account_demo, load_demo
@@ -74,6 +74,7 @@ def test_account_history_keeps_published_observations_separate(isolated_warehous
         return [json.loads(line) for line in silver.execute(sql, **parameters).splitlines()]
 
     monkeypatch.setattr(accounts, "dashboard_query", query)
+    monkeypatch.setattr(spending, "dashboard_query", query)
     path = "/api/accounts/history"
     item = item_key(ITEM)
     other = item_key(NEW_ITEM)
@@ -108,6 +109,7 @@ def test_account_snapshot_scopes_distinct_connections_and_keeps_reported_values(
         return [json.loads(line) for line in silver.execute(sql, **parameters).splitlines()]
 
     monkeypatch.setattr(accounts, "dashboard_query", query)
+    monkeypatch.setattr(spending, "dashboard_query", query)
     with TestClient(app) as client:
         response = client.get("/api/accounts")
         assert response.status_code == 200

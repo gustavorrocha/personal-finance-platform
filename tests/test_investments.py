@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from finance_api import investments
+from finance_api import investments, spending
 from finance_api.main import app
 from finance_ingestion.collection import item_key
 from finance_lake.bronze import CapturePage
@@ -82,6 +82,7 @@ def test_investments_remain_separate_and_preserve_latest_reported_values(
         return [json.loads(line) for line in silver.execute(sql, **parameters).splitlines()]
 
     monkeypatch.setattr(investments, "dashboard_query", query)
+    monkeypatch.setattr(spending, "dashboard_query", query)
     with TestClient(app) as client:
         assert client.get("/api/investments").json()["positions"] == []
         response = client.get("/api/investments", params={"item": str(item_key(ITEM))})
