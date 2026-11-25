@@ -838,9 +838,10 @@ export function CategoryMonthsTable({
   return currencies(rows).map((currency) => {
     const { months, categories } = categoryMonths(rows, currency, end);
     if (!categories.length) return null;
-    const active = months.filter((_, index) =>
-      categories.some((row) => row.values[index] > 0),
-    ).length;
+    const totals = months.map((_, index) =>
+      categories.reduce((sum, row) => sum + row.values[index], 0),
+    );
+    const active = totals.filter((value) => value > 0).length;
     const max = Math.max(1, ...categories.flatMap((row) => row.values));
     const money = (value: number) =>
       formatMoney(String(value), currency, locale);
@@ -949,7 +950,176 @@ export function CategoryMonthsTable({
                 });
               })}
             </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">{copy.total}</th>
+                {totals.map((value, index) => (
+                  <td
+                    key={months[index]}
+                    className={months[index] === month ? "selected" : undefined}
+                  >
+                    {value > 0 ? short.format(value) : "—"}
+                  </td>
+                ))}
+                <td className="average">
+                  {short.format(
+                    totals.reduce((sum, value) => sum + value, 0) /
+                      Math.max(1, active),
+                  )}
+                </td>
+              </tr>
+            </tfoot>
           </table>
+        </div>
+      </div>
+    );
+  });
+}
+
+// Named series before the rest folds into "Other".
+const CATEGORY_SERIES = 7;
+
+/** Monthly spending stacked by category; picking one splits it into subcategories. */
+export function CategoryChart({
+  rows,
+  month,
+  end,
+  locale,
+  disabled,
+  onSelect,
+}: Props & {
+  end: string;
+  disabled: boolean;
+  onSelect: (month: string) => void;
+}) {
+  const copy = messages[locale];
+  const [focus, setFocus] = useState<string>();
+  const percent = new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 0,
+  });
+  return currencies(rows).map((currency) => {
+    const { months, categories } = categoryMonths(rows, currency, end);
+    if (!categories.length) return null;
+    const focused = categories.find((row) => row.category === focus);
+    const pieces = focused
+      ? focused.subcategories.length
+        ? focused.subcategories
+        : [focused]
+      : categories;
+    const named = pieces.length > CATEGORY_SERIES + 1;
+    const shown = named ? pieces.slice(0, CATEGORY_SERIES) : pieces;
+    const rest = named ? pieces.slice(CATEGORY_SERIES) : [];
+    const series = [
+      ...shown.map((row, index) => ({
+        name:
+          row.category || (focused ? copy.noSubcategory : copy.uncategorized),
+        key: row.category,
+        swatch: `series-${index + 1}`,
+        values: row.values,
+      })),
+      ...(rest.length
+        ? [
+            {
+              name: copy.otherComponents,
+              key: undefined,
+              swatch: "other",
+              values: months.map((_, index) =>
+                rest.reduce((sum, row) => sum + row.values[index], 0),
+              ),
+            },
+          ]
+        : []),
+    ];
+    const totals = months.map((_, index) =>
+      series.reduce((sum, entry) => sum + entry.values[index], 0),
+    );
+    const max = Math.max(1, ...totals);
+    const money = (value: number) =>
+      formatMoney(String(value), currency, locale);
+    return (
+      <div className="chart" key={currency}>
+        {currencies(rows).length > 1 && <h3>{currency}</h3>}
+        {focused && (
+          <p>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => setFocus(undefined)}
+            >
+              ← {copy.allCategories}
+            </button>{" "}
+            <strong>{focused.category || copy.uncategorized}</strong>
+          </p>
+        )}
+        <ul className="legend">
+          {series.map((entry) => (
+            <li key={entry.swatch}>
+              <i className={`swatch ${entry.swatch}`} aria-hidden="true" />
+              {!focused && entry.key !== undefined ? (
+                <button
+                  type="button"
+                  className="link-button"
+                  aria-label={`${copy.subcategories}: ${entry.name}`}
+                  onClick={() => setFocus(entry.key)}
+                >
+                  {entry.name}
+                </button>
+              ) : (
+                entry.name
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="month-chart">
+          {months.map((slot, index) => (
+            <button
+              type="button"
+              key={slot}
+              className="month-column"
+              aria-pressed={slot === month}
+              aria-label={`${monthLabel(slot, locale, true)}: ${money(totals[index])}`}
+              disabled={disabled}
+              onClick={() => onSelect(slot)}
+            >
+              <span className="month-tooltip" aria-hidden="true">
+                <b>{monthLabel(slot, locale, true)}</b>
+                {[...series]
+                  .filter((entry) => entry.values[index] > 0)
+                  .sort((a, b) => b.values[index] - a.values[index])
+                  .map((entry) => (
+                    <span key={entry.swatch} className="tooltip-row">
+                      <i
+                        className={`swatch ${entry.swatch}`}
+                        aria-hidden="true"
+                      />
+                      {entry.name}: {money(entry.values[index])} (
+                      {percent.format(entry.values[index] / totals[index])})
+                    </span>
+                  ))}
+                <b>
+                  {copy.total}: {money(totals[index])}
+                </b>
+              </span>
+              <span className="month-plot" aria-hidden="true">
+                <span
+                  className="month-stack"
+                  style={{ height: `${(totals[index] / max) * 100}%` }}
+                >
+                  {[...series].reverse().map((entry) => (
+                    <span
+                      key={entry.swatch}
+                      className={`swatch ${entry.swatch}`}
+                      style={{ flexGrow: entry.values[index] }}
+                    />
+                  ))}
+                </span>
+              </span>
+              <span className="month-label" aria-hidden="true">
+                {monthLabel(slot, locale)}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
     );

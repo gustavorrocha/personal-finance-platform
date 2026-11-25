@@ -287,5 +287,8 @@
   "disabledAccountsHelp": "A disabled account stays out of balance totals and spending. Its history is kept, and you can turn it back on at any time.",
   "categoryMonths": "Categories by month",
   "categoryMonthsHelp": "Spending per category in the last 12 months. Darker cells are larger amounts; click a cell to see its expenses, or a category arrow to open its subcategories.",
-  "monthlyAverage": "Monthly average"
+  "monthlyAverage": "Monthly average",
+  "categoryChart": "Spending by category",
+  "categoryChartHelp": "Each column is a month, split by category. Click a category in the legend to split it into subcategories, or a column to open that month.",
+  "allCategories": "All categories"
 }

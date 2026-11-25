@@ -1170,3 +1170,27 @@ tr.disabled > :not(:last-child) {
   padding-left: 0.75rem;
   font-weight: 650;
 }
+.heatmap tfoot th,
+.heatmap tfoot td {
+  border-top: 2px solid #d4ded4;
+  padding: 0.5rem 0.4rem;
+  font-weight: 650;
+}
+.swatch.series-7 {
+  background: #6250d6;
+}
+.swatch.other {
+  background: #9aa9a1;
+}
+.month-tooltip > .tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+.legend .link-button {
+  text-decoration: underline dotted;
+}
+.swatch.series-8 {
+  background: #e34948;
+}

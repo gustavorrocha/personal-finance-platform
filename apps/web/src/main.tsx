@@ -15,6 +15,7 @@ import { SavingsBoxSuggestions } from "./savings-suggestions";
 import { Menu, Toast, Help } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
+  CategoryChart,
   CategoryComparison,
   CategoryMonthsTable,
   InvestmentComparison,
@@ -508,11 +509,15 @@ function App() {
                       <button
                         disabled={saving}
                         type="button"
-                        onClick={() =>
-                          void save("reviews", entry, {
-                            decision: "include",
-                          })
-                        }
+                        onClick={async () => {
+                          // Ask for the category right away; the row leaves the backlog.
+                          if (
+                            await save("reviews", entry, {
+                              decision: "include",
+                            })
+                          )
+                            setSelected({ entry, editable: true });
+                        }}
                       >
                         {copy.includeExpense}
                       </button>
@@ -847,7 +852,21 @@ function App() {
               <h2 id="categories">{copy.categoryComparison}</h2>
               {uncategorized > 0 && (
                 <p>
-                  {number.format(uncategorized)} {copy.awaitingCategory}
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={saving || suggesting}
+                    onClick={() => {
+                      setFilter({ category: "" });
+                      setPage(1);
+                      setExpanded(true);
+                      document
+                        .getElementById("expenses")
+                        ?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    {number.format(uncategorized)} {copy.awaitingCategory}
+                  </button>
                 </p>
               )}
               <CategoryComparison
@@ -862,6 +881,21 @@ function App() {
                   document
                     .getElementById("expenses")
                     ?.scrollIntoView({ behavior: "smooth" });
+                }}
+              />
+            </section>
+            <section className="panel" aria-labelledby="category-chart">
+              <h2 id="category-chart">{copy.categoryChart}</h2>
+              <Help label={copy.howItWorks}>{copy.categoryChartHelp}</Help>
+              <CategoryChart
+                rows={history}
+                month={data.month ?? ""}
+                end={data.chart_month ?? data.month ?? ""}
+                locale={locale}
+                disabled={saving || suggesting}
+                onSelect={(value) => {
+                  setPage(1);
+                  setMonth(value);
                 }}
               />
             </section>
