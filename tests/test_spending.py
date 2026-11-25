@@ -51,6 +51,8 @@ def test_investment_flows_cover_savings_boxes_and_fixed_income_and_are_not_spend
             "contribution",
         ),
         ({"type": "CREDIT", "description": "VENCIMENTO - LCA BANCO X"}, "withdrawal"),
+        ({"type": "DEBIT", "description": "COMPRA DE TESOURO DIRETO: IPCA+ 2035"}, "contribution"),
+        ({"type": "DEBIT", "description": "EMISSAO - LCA BANCO X"}, "contribution"),
         (
             {
                 "type": "CREDIT",
@@ -150,7 +152,9 @@ def test_category_corrections_require_local_origin_and_validate_before_database(
 
 
 def test_dashboard_describes_demo_without_relying_on_english_labels(monkeypatch):
-    async def connections(_query):
+    async def connections(query):
+        if "connection_names" in query:
+            return []
         return [
             {"id": spending.DEMO_ITEM, "latest_month": "2026-11"},
             {"id": "10000000-0000-4000-8000-100000000001", "latest_month": "2026-11"},
@@ -1000,3 +1004,22 @@ def test_savings_box_outflows_remove_the_cdi_yield_between_balances(
     assert len(rows) == 1
     assert Decimal(rows[0]["earned"]) == pytest.approx(Decimal("100.025"), abs=Decimal("0.01"))
     assert Decimal(rows[0]["amount"]) == pytest.approx(Decimal("40.025"), abs=Decimal("0.01"))
+
+
+def test_boleto_is_not_an_own_transfer_even_when_the_bank_reports_the_payer_as_receiver():
+    owner = {"documentNumber": {"type": "CPF", "value": "123.456.789-09"}}
+    record = {
+        "type": "DEBIT",
+        "description": "BANKSLIP",
+        "category": "Same person transfer",
+        "operationType": "BOLETO",
+        "paymentData": {"paymentMethod": "BOLETO", "payer": owner, "receiver": owner},
+    }
+    owners = frozenset({"12345678909"})
+    fields = spending_fields(record, "tx", owners=owners)
+    assert not fields["own_transfer"]
+    assert fields["spending_kind"] == "review"
+    pix = record | {"description": "PIX", "operationType": "PIX"}
+    pix["paymentData"] = record["paymentData"] | {"paymentMethod": "PIX"}
+    fields = spending_fields(pix, "tx", owners=owners)
+    assert fields["own_transfer"] and fields["spending_kind"] == ""

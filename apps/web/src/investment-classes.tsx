@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { formatMoney, messages, type Locale } from "./locale";
+import { Help } from "./ui";
 
 type InvestmentClass = { id: string; name: string };
 type Position = {
@@ -82,7 +83,7 @@ export function InvestmentClasses({ locale }: { locale: Locale }) {
   return (
     <section className="panel" aria-labelledby="investment-classes">
       <h2 id="investment-classes">{copy.investmentClasses}</h2>
-      <p>{copy.investmentClassesHelp}</p>
+      <Help label={copy.howItWorks}>{copy.investmentClassesHelp}</Help>
       {status && <p role="status">{copy[status]}</p>}
       {data.classes.map((entry) => (
         <form

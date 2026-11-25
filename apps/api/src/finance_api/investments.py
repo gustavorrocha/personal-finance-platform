@@ -14,6 +14,7 @@ from .spending import (
     INVESTMENT_ASSIGNMENTS,
     INVESTMENT_CLASS_LIST,
     ZERO_UUID,
+    add_institutions,
     dashboard_query,
     same_origin,
 )
@@ -27,6 +28,7 @@ async def investment_snapshot(item: UUID | None = None):
         "SELECT item_key AS id FROM analytics.investments_dashboard "
         "GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
     )
+    await add_institutions(connections)
     selected = select_connection(connections, item, "Connection has no reported investments")
     rows = []
     if selected is not None:

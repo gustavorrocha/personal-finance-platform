@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { InvestmentClasses } from "./investment-classes";
 import { messages, type Locale } from "./locale";
+import { Help } from "./ui";
 
 export type CategoryNode = {
   id: string;
@@ -170,7 +171,7 @@ export function CategoriesView({ locale }: { locale: Locale }) {
       </div>
       <section className="panel" aria-labelledby="category-editor">
         <h2 id="category-editor">{copy.editCategories}</h2>
-        <p>{copy.categoriesHelp}</p>
+        <Help label={copy.howItWorks}>{copy.categoriesHelp}</Help>
         {status && <p role="status">{copy[status]}</p>}
         {tree.map((top) => (
           <div className="category-group" key={top.id}>

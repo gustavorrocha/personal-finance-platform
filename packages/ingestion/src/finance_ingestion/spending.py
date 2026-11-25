@@ -63,7 +63,9 @@ SAVINGS_BOX = {"dinheiro reservado": "contribution", "dinheiro retirado": "withd
 # Fixed-income movements that providers file as same-person transfers.
 FIXED_INCOME = r"(cdb|lca|lci|cra|cri|lf|tesouro|debentures?)\b"
 FIXED_INCOME_MOVES = {
-    re.compile(rf"^(compra|aplicacao|aplicação) {FIXED_INCOME}"): "contribution",
+    re.compile(
+        rf"^(compra|aplicacao|aplicação|emissao|emissão)( de)? {FIXED_INCOME}"
+    ): "contribution",
     re.compile(rf"^(venda|vencimento|resgate) {FIXED_INCOME}"): "withdrawal",
     re.compile(rf"^(cupom|irrf) {FIXED_INCOME}"): "income",
 }
@@ -162,8 +164,13 @@ def spending_fields(
         else None
     )
     document = side.get("documentNumber") if isinstance(side, dict) else None
-    own_transfer = bool(owners) and (
-        digits(document.get("value")) in owners if isinstance(document, dict) else False
+    # A boleto pays its beneficiary; some banks still report the payer's own CPF as
+    # the receiver of every debit, so the document alone does not prove an own transfer.
+    boleto = operation == "BOLETO"
+    own_transfer = (
+        bool(owners)
+        and not boleto
+        and (digits(document.get("value")) in owners if isinstance(document, dict) else False)
     )
     label = merchant_name[:80] if merchant_name.isprintable() else ""
     merchant_match = normalize(merchant_name)
@@ -196,7 +203,7 @@ def spending_fields(
         or own_transfer
         or bill_payment
         or (operation in NON_SPENDING and not mislabeled_card_purchase)
-        or (transfer_category and provider_category == "same person transfer")
+        or (transfer_category and provider_category == "same person transfer" and not boleto)
     )
     # The bank's own consumption category is evidence even for a PIX or boleto payment.
     spending_category = business["category_id"][:2] in SPENDING_GROUPS and not transfer_category

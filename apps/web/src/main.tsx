@@ -1,20 +1,32 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
 import { CategoriesView, categoryPath, type CategoryNode } from "./categories";
-import { visibleConnections } from "./connections";
-import { InvestmentsView } from "./investments";
+import { connectionLabel, visibleConnections } from "./connections";
+import {
+  InvestmentsView,
+  MonthlyInvestmentPositions,
+  type MonthlyPosition,
+} from "./investments";
 import {
   ExpenseDialog,
   type DialogExpense,
   type RuleScope,
 } from "./expense-dialog";
+import { CashFlow, MonthPace, ReturnsTile, type DailyRow } from "./insights";
 import { ManualExpenses } from "./manual-expenses";
 import { SavingsBoxSuggestions } from "./savings-suggestions";
-import { Menu, Toast } from "./ui";
+import { Menu, Toast, Help } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
+  CategoryChart,
+  Commitments,
+  type CommitmentRow,
+  type InstallmentRow,
+  NetWorthTile,
+  type NetWorthRow,
   CategoryComparison,
+  CategoryMonthsTable,
   InvestmentComparison,
   InvestedEvolution,
   type InvestedGap,
@@ -45,7 +57,12 @@ import {
 } from "./locale";
 import "./style.css";
 
-type Connection = { id: string; is_demo: boolean; latest_month: string };
+type Connection = {
+  id: string;
+  is_demo: boolean;
+  latest_month: string;
+  institution?: string | null;
+};
 type Total = {
   currency: string;
   bucket: string | null;
@@ -85,6 +102,12 @@ type Spending = {
   invested_returns?: InvestmentReturnsData;
   chart_month?: string | null;
   invested?: InvestedRow[];
+  commitments?: CommitmentRow[];
+  installments?: InstallmentRow[];
+  net_worth?: NetWorthRow[];
+  investment_positions?: MonthlyPosition[];
+  investment_connections?: Connection[];
+  daily?: DailyRow[];
   expenses: Expense[];
   has_more_expenses?: boolean;
   reviews: Review[];
@@ -97,11 +120,29 @@ const years = Array.from(
   (_, index) => 2148 - index,
 );
 
-function currentView(): "accounts" | "investments" | "categories" | "spending" {
+const VIEWS = [
+  "overview",
+  "spending",
+  "pending",
+  "investments",
+  "accounts",
+  "categories",
+] as const;
+type View = (typeof VIEWS)[number];
+// Views built from the spending API (filtered by connection and month).
+const DATA_VIEWS: View[] = ["overview", "spending", "pending", "investments"];
+const TITLES = {
+  overview: "overviewView",
+  spending: "title",
+  pending: "pendingView",
+  investments: "investments",
+  accounts: "accounts",
+  categories: "categories",
+} as const;
+
+function currentView(): View {
   const view = window.location.hash.slice(1);
-  return view === "accounts" || view === "investments" || view === "categories"
-    ? view
-    : "spending";
+  return VIEWS.find((value) => value === view) ?? "overview";
 }
 
 function App() {
@@ -130,6 +171,8 @@ function App() {
     editable: boolean;
   }>();
   const [filter, setFilter] = useState<CategoryFilter>();
+  // A filter picked together with another month, applied once that month loads.
+  const nextFilter = useRef<CategoryFilter>(undefined);
   const [expanded, setExpanded] = useState(false);
   const [suggestionStatus, setSuggestionStatus] = useState<
     "suggestionsReady" | "noSuggestions" | "suggestionsUnavailable"
@@ -146,7 +189,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = `${view === "spending" ? copy.title : copy[view]} | ${copy.brand}`;
+    document.title = `${copy[TITLES[view]]} | ${copy.brand}`;
   }, [locale, copy, view]);
 
   function changeLanguage(value: LanguagePreference) {
@@ -160,7 +203,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (view !== "spending") return;
+    if (!DATA_VIEWS.includes(view)) return;
     const request = new AbortController();
     const query = new URLSearchParams();
     if (item) query.set("item", item);
@@ -190,8 +233,9 @@ function App() {
   }, [item, month, search, page, revision, view, filter]);
 
   useEffect(() => {
-    setFilter(undefined);
-    setExpanded(false);
+    setFilter(nextFilter.current);
+    setExpanded(nextFilter.current !== undefined);
+    nextFilter.current = undefined;
     setAttempted([]);
     setSuggestions({});
     setSuggestionStatus(undefined);
@@ -289,9 +333,14 @@ function App() {
   );
   const connections = visibleConnections(data?.connections ?? []);
   const connectionLabels = new Map(
-    data?.connections.map((connection, index) => [
+    data?.connections.map((connection) => [
       connection.id,
-      `${copy.connection} ${number.format(index + 1)}`,
+      connectionLabel(
+        data.connections,
+        connection,
+        copy.connection,
+        copy.syntheticDemo,
+      ),
     ]),
   );
   const categories = data?.categories ?? [];
@@ -310,6 +359,8 @@ function App() {
   const decidedReceipts = receipts.filter((row) => row.decision);
   const pendingReviews = data?.reviews.filter((row) => !row.decision) ?? [];
   const decidedReviews = data?.reviews.filter((row) => row.decision) ?? [];
+  const pendingCount = pendingReviews.length + pendingReceipts.length;
+  const today = new Date().toLocaleDateString("en-CA");
   const uncategorized =
     data?.totals
       .filter((row) => row.bucket === "")
@@ -472,11 +523,15 @@ function App() {
                       <button
                         disabled={saving}
                         type="button"
-                        onClick={() =>
-                          void save("reviews", entry, {
-                            decision: "include",
-                          })
-                        }
+                        onClick={async () => {
+                          // Ask for the category right away; the row leaves the backlog.
+                          if (
+                            await save("reviews", entry, {
+                              decision: "include",
+                            })
+                          )
+                            setSelected({ entry, editable: true });
+                        }}
                       >
                         {copy.includeExpense}
                       </button>
@@ -545,28 +600,32 @@ function App() {
         </div>
       </header>
       <nav className="frame dashboard-nav" aria-label={copy.dashboardViews}>
+        {(
+          [
+            "overview",
+            "spending",
+            "pending",
+            "investments",
+            "accounts",
+          ] as const
+        ).map((value) => (
+          <a
+            key={value}
+            href={`#${value}`}
+            aria-current={view === value ? "page" : undefined}
+          >
+            {copy[TITLES[value]]}
+            {value === "pending" && pendingCount > 0 && (
+              <span className="count">{number.format(pendingCount)}</span>
+            )}
+          </a>
+        ))}
         <a
-          href="#spending"
-          aria-current={view === "spending" ? "page" : undefined}
-        >
-          {copy.spendingView}
-        </a>
-        <a
-          href="#accounts"
-          aria-current={view === "accounts" ? "page" : undefined}
-        >
-          {copy.accounts}
-        </a>
-        <a
-          href="#investments"
-          aria-current={view === "investments" ? "page" : undefined}
-        >
-          {copy.investments}
-        </a>
-        <a
+          className="settings-link"
           href="#categories"
           aria-current={view === "categories" ? "page" : undefined}
         >
+          <span aria-hidden="true">⚙ </span>
           {copy.categories}
         </a>
       </nav>
@@ -609,14 +668,18 @@ function App() {
         onClose={() => setSelected(undefined)}
       />
       {view === "accounts" && <AccountsView locale={locale} />}
-      {view === "investments" && <InvestmentsView locale={locale} />}
+      {DATA_VIEWS.includes(view) && loading && data && (
+        <p className="frame refresh-status" role="status">
+          {copy.refreshing}
+        </p>
+      )}
       <main
         className={loading && data ? "frame refreshing" : "frame"}
-        hidden={view !== "spending"}
+        hidden={!DATA_VIEWS.includes(view)}
         aria-busy={loading}
       >
         <div className="intro">
-          <h1>{copy.title}</h1>
+          <h1>{copy[TITLES[view]]}</h1>
           <div className="filters">
             <label>
               {copy.connection}
@@ -716,85 +779,70 @@ function App() {
         )}
         {ready &&
           data?.selected &&
+          (view === "overview" || view === "spending") &&
           !history.some((row) => row.month === data.month) && (
             <p className="empty">{copy.noSpending}</p>
           )}
-        {ready && data?.selected && (
-          <section className="panel" aria-labelledby="reviews">
-            <h2 id="reviews">
-              {copy.reviewTitle}
-              {pendingReviews.length > 0 &&
-                ` (${number.format(pendingReviews.length)})`}
-            </h2>
-            {pendingReviews.length === 0 ? (
-              <p>{copy.noReviews}</p>
-            ) : (
-              <>
-                <p>{copy.reviewHelp}</p>
-                {reviewTable(pendingReviews)}
-              </>
-            )}
-            {decidedReviews.length > 0 && (
-              <details>
-                <summary>
-                  {copy.decidedReviews} ({number.format(decidedReviews.length)})
-                </summary>
-                {reviewTable(decidedReviews)}
-              </details>
-            )}
-            {data.reviews.length === 100 && <p>{copy.reviewLimit}</p>}
-          </section>
-        )}
-        {ready && data?.selected && receipts.length > 0 && (
-          <section className="panel" aria-labelledby="receipts">
-            <h2 id="receipts">
-              {copy.receiptsTitle}
-              {pendingReceipts.length > 0 &&
-                ` (${number.format(pendingReceipts.length)})`}
-            </h2>
-            <p>{copy.receiptsHelp}</p>
-            {pendingReceipts.length > 0 && receiptTable(pendingReceipts)}
-            {decidedReceipts.length > 0 && (
-              <details open={pendingReceipts.length === 0}>
-                <summary>
-                  {copy.decidedReceipts} (
-                  {number.format(decidedReceipts.length)})
-                </summary>
-                {receiptTable(decidedReceipts)}
-              </details>
-            )}
-          </section>
-        )}
-        {ready && data?.selected && (
-          <SavingsBoxSuggestions
-            locale={locale}
-            revision={revision}
-            categories={categories}
-            onChange={() => setRevision((value) => value + 1)}
-          />
-        )}
-        {ready &&
-          data?.selected &&
-          (history.length > 0 ||
-            investments.length > 0 ||
-            invested.length > 0) && (
-            <>
-              <MonthOverview
-                rows={history}
-                month={data.month ?? ""}
+        {ready && data?.selected && view === "overview" && (
+          <>
+            <MonthOverview
+              rows={history}
+              month={data.month ?? ""}
+              locale={locale}
+            >
+              <NetWorthTile
+                accounts={data.net_worth ?? []}
+                invested={invested}
+                upcoming={data.commitments ?? []}
                 locale={locale}
+              />
+              {data.invested_returns && (
+                <ReturnsTile data={data.invested_returns} locale={locale} />
+              )}
+            </MonthOverview>
+            {pendingCount > 0 && (
+              <section
+                className="panel pending-summary"
+                aria-labelledby="pending-summary"
               >
-                <InvestmentOverview
-                  rows={investments}
+                <div>
+                  <h2 id="pending-summary">{copy.pendingTitle}</h2>
+                  <ul>
+                    {pendingReviews.length > 0 && (
+                      <li>
+                        {number.format(pendingReviews.length)}{" "}
+                        {copy.pendingDebits}
+                      </li>
+                    )}
+                    {pendingReceipts.length > 0 && (
+                      <li>
+                        {number.format(pendingReceipts.length)}{" "}
+                        {copy.pendingReceipts}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+                <a className="button-link" href="#pending">
+                  {copy.reviewNow}
+                </a>
+              </section>
+            )}
+            <div className="chart-grid">
+              <section className="panel" aria-labelledby="month-pace">
+                <h2 id="month-pace">{copy.paceTitle}</h2>
+                <MonthPace
+                  rows={data.daily ?? []}
                   month={data.month ?? ""}
+                  today={today}
                   locale={locale}
                 />
-                <InvestedTotal rows={invested} locale={locale} />
-              </MonthOverview>
-              <section className="panel" aria-labelledby="monthly-comparison">
-                <h2 id="monthly-comparison">{copy.monthlyComparison}</h2>
-                <MonthlyComparison
-                  rows={history}
+              </section>
+              <section className="panel" aria-labelledby="cash-flow">
+                <h2 id="cash-flow">{copy.cashFlowTitle}</h2>
+                <Help label={copy.howItWorks}>{copy.cashFlowHelp}</Help>
+                <CashFlow
+                  history={history}
+                  investments={investments}
                   month={data.month ?? ""}
                   end={data.chart_month ?? data.month ?? ""}
                   locale={locale}
@@ -805,72 +853,112 @@ function App() {
                   }}
                 />
               </section>
-              {investments.length > 0 && (
-                <section
-                  className="panel"
-                  aria-labelledby="investment-comparison"
-                >
-                  <h2 id="investment-comparison">
-                    {copy.investmentComparison}
-                  </h2>
-                  <InvestmentComparison
-                    rows={investments}
-                    month={data.month ?? ""}
-                    end={data.chart_month ?? data.month ?? ""}
-                    locale={locale}
-                    disabled={saving || suggesting}
-                    onSelect={(value) => {
-                      setPage(1);
-                      setMonth(value);
-                    }}
-                  />
-                </section>
-              )}
-              {(data.invested_history ?? []).length > 0 && (
-                <section className="panel" aria-labelledby="invested-evolution">
-                  <h2 id="invested-evolution">{copy.investedEvolution}</h2>
-                  <InvestedEvolution
-                    rows={data.invested_history ?? []}
-                    gaps={data.invested_gaps ?? []}
-                    locale={locale}
-                  />
-                </section>
-              )}
-              {(data.invested_returns?.rows ?? []).length > 0 && (
-                <section className="panel" aria-labelledby="investment-returns">
-                  <h2 id="investment-returns">{copy.investmentReturns}</h2>
-                  <InvestmentReturns
-                    data={data.invested_returns!}
-                    locale={locale}
-                  />
-                </section>
-              )}
-              <section className="panel" aria-labelledby="categories">
-                <h2 id="categories">{copy.categoryComparison}</h2>
-                {uncategorized > 0 && (
-                  <p>
-                    {number.format(uncategorized)} {copy.awaitingCategory}
-                  </p>
-                )}
-                <CategoryComparison
-                  rows={history}
-                  month={data.month ?? ""}
-                  locale={locale}
-                  disabled={saving || suggesting}
-                  onSelect={(category, subcategory) => {
-                    setFilter({ category, subcategory });
-                    setPage(1);
-                    setExpanded(true);
-                    document
-                      .getElementById("expenses")
-                      ?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                />
-              </section>
-            </>
-          )}
-        {ready && data?.selected && (
+            </div>
+          </>
+        )}
+        {ready && data?.selected && view === "spending" && (
           <>
+            <section className="panel" aria-labelledby="monthly-comparison">
+              <h2 id="monthly-comparison">{copy.monthlyComparison}</h2>
+              <MonthlyComparison
+                rows={history}
+                month={data.month ?? ""}
+                end={data.chart_month ?? data.month ?? ""}
+                locale={locale}
+                disabled={saving || suggesting}
+                onSelect={(value) => {
+                  setPage(1);
+                  setMonth(value);
+                }}
+              />
+            </section>
+            <section className="panel" aria-labelledby="categories">
+              <h2 id="categories">{copy.categoryComparison}</h2>
+              {uncategorized > 0 && (
+                <p>
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={saving || suggesting}
+                    onClick={() => {
+                      setFilter({ category: "" });
+                      setPage(1);
+                      setExpanded(true);
+                      document
+                        .getElementById("expenses")
+                        ?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    {number.format(uncategorized)} {copy.awaitingCategory}
+                  </button>
+                </p>
+              )}
+              <CategoryComparison
+                rows={history}
+                month={data.month ?? ""}
+                locale={locale}
+                disabled={saving || suggesting}
+                onSelect={(category, subcategory) => {
+                  setFilter({ category, subcategory });
+                  setPage(1);
+                  setExpanded(true);
+                  document
+                    .getElementById("expenses")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }}
+              />
+            </section>
+            <section className="panel" aria-labelledby="category-chart">
+              <h2 id="category-chart">{copy.categoryChart}</h2>
+              <Help label={copy.howItWorks}>{copy.categoryChartHelp}</Help>
+              <CategoryChart
+                rows={history}
+                month={data.month ?? ""}
+                end={data.chart_month ?? data.month ?? ""}
+                locale={locale}
+                disabled={saving || suggesting}
+                onSelect={(value) => {
+                  setPage(1);
+                  setMonth(value);
+                }}
+              />
+            </section>
+            <section className="panel" aria-labelledby="upcoming">
+              <h2 id="upcoming">{copy.upcomingTitle}</h2>
+              <Help label={copy.howItWorks}>{copy.upcomingHelp}</Help>
+              <Commitments
+                rows={data.commitments ?? []}
+                installments={data.installments ?? []}
+                locale={locale}
+                connection={
+                  combined ? (item) => connectionLabels.get(item) : undefined
+                }
+              />
+            </section>
+            <section className="panel" aria-labelledby="category-months">
+              <h2 id="category-months">{copy.categoryMonths}</h2>
+              <Help label={copy.howItWorks}>{copy.categoryMonthsHelp}</Help>
+              <CategoryMonthsTable
+                rows={history}
+                month={data.month ?? ""}
+                end={data.chart_month ?? data.month ?? ""}
+                locale={locale}
+                disabled={saving || suggesting}
+                onSelect={(value, category, subcategory) => {
+                  setPage(1);
+                  if (value === data.month) {
+                    setFilter({ category, subcategory });
+                    setExpanded(true);
+                  } else {
+                    nextFilter.current = { category, subcategory };
+                    setMonth(value);
+                  }
+                  document
+                    .getElementById("expenses")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }}
+              />
+            </section>
             <section className="panel" aria-labelledby="expenses">
               <h2 id="expenses">{copy.recentExpenses}</h2>
               <p>{copy.matchingExpenses}</p>
@@ -1077,20 +1165,143 @@ function App() {
                 </div>
               )}
             </section>
-            <ManualExpenses
-              locale={locale}
-              categories={categories}
-              connections={(data.connections ?? [])
-                .filter((connection) => !connection.is_demo)
-                .map((connection) => ({
-                  id: connection.id,
-                  label: connectionLabels.get(connection.id) ?? connection.id,
-                }))}
-              onChange={() => setRevision((value) => value + 1)}
-            />
+          </>
+        )}
+        {view === "pending" && (
+          <>
+            {ready && data?.selected && (
+              <section className="panel" aria-labelledby="reviews">
+                <h2 id="reviews">
+                  {copy.reviewTitle}
+                  {pendingReviews.length > 0 &&
+                    ` (${number.format(pendingReviews.length)})`}
+                </h2>
+                {pendingReviews.length === 0 ? (
+                  <p>{copy.noReviews}</p>
+                ) : (
+                  <>
+                    <Help label={copy.howItWorks}>{copy.reviewHelp}</Help>
+                    {reviewTable(pendingReviews)}
+                  </>
+                )}
+                {decidedReviews.length > 0 && (
+                  <details>
+                    <summary>
+                      {copy.decidedReviews} (
+                      {number.format(decidedReviews.length)})
+                    </summary>
+                    {reviewTable(decidedReviews)}
+                  </details>
+                )}
+                {data.reviews.length === 100 && <p>{copy.reviewLimit}</p>}
+              </section>
+            )}
+            {ready && data?.selected && receipts.length > 0 && (
+              <section className="panel" aria-labelledby="receipts">
+                <h2 id="receipts">
+                  {copy.receiptsTitle}
+                  {pendingReceipts.length > 0 &&
+                    ` (${number.format(pendingReceipts.length)})`}
+                </h2>
+                <Help label={copy.howItWorks}>{copy.receiptsHelp}</Help>
+                {pendingReceipts.length > 0 && receiptTable(pendingReceipts)}
+                {decidedReceipts.length > 0 && (
+                  <details open={pendingReceipts.length === 0}>
+                    <summary>
+                      {copy.decidedReceipts} (
+                      {number.format(decidedReceipts.length)})
+                    </summary>
+                    {receiptTable(decidedReceipts)}
+                  </details>
+                )}
+              </section>
+            )}
+            {ready && data?.selected && (
+              <SavingsBoxSuggestions
+                locale={locale}
+                revision={revision}
+                categories={categories}
+                onChange={() => setRevision((value) => value + 1)}
+              />
+            )}
+            {ready && data?.selected && (
+              <ManualExpenses
+                locale={locale}
+                categories={categories}
+                connections={(data.connections ?? [])
+                  .filter((connection) => !connection.is_demo)
+                  .map((connection) => ({
+                    id: connection.id,
+                    label: connectionLabels.get(connection.id) ?? connection.id,
+                  }))}
+                onChange={() => setRevision((value) => value + 1)}
+              />
+            )}
+          </>
+        )}
+        {ready && data?.selected && view === "investments" && (
+          <>
+            <div className="summary">
+              <InvestedTotal rows={invested} locale={locale} />
+              {data.invested_returns && (
+                <ReturnsTile data={data.invested_returns} locale={locale} />
+              )}
+              <InvestmentOverview
+                rows={investments}
+                month={data.month ?? ""}
+                locale={locale}
+              />
+            </div>
+            {data.month && (
+              <MonthlyInvestmentPositions
+                month={data.month}
+                positions={data.investment_positions ?? []}
+                connections={data.investment_connections ?? []}
+                locale={locale}
+              />
+            )}
+            {(data.invested_history ?? []).length > 0 && (
+              <section className="panel" aria-labelledby="invested-evolution">
+                <h2 id="invested-evolution">{copy.investedEvolution}</h2>
+                <InvestedEvolution
+                  rows={data.invested_history ?? []}
+                  gaps={data.invested_gaps ?? []}
+                  locale={locale}
+                />
+              </section>
+            )}
+            {(data.invested_returns?.rows ?? []).length > 0 && (
+              <section className="panel" aria-labelledby="investment-returns">
+                <h2 id="investment-returns">{copy.investmentReturns}</h2>
+                <InvestmentReturns
+                  data={data.invested_returns!}
+                  locale={locale}
+                />
+              </section>
+            )}
+            {investments.length > 0 && (
+              <section
+                className="panel"
+                aria-labelledby="investment-comparison"
+              >
+                <h2 id="investment-comparison">{copy.investmentComparison}</h2>
+                <InvestmentComparison
+                  rows={investments}
+                  month={data.month ?? ""}
+                  end={data.chart_month ?? data.month ?? ""}
+                  locale={locale}
+                  disabled={saving || suggesting}
+                  onSelect={(value) => {
+                    setPage(1);
+                    setMonth(value);
+                  }}
+                />
+              </section>
+            )}
           </>
         )}
       </main>
+      {view === "investments" && <InvestmentsView locale={locale} nested />}
     </>
   );
 }

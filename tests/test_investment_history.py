@@ -33,6 +33,7 @@ def test_positions_are_preclassified_from_type_and_indexer():
 def snapshot(position, day, balance, kind="FIXED_INCOME", indexer="IPCA", name="NTNB"):
     return {
         "position": position,
+        "item": f"connection-{position}",
         "observed_on": day,
         "type": kind,
         "indexer": indexer,
@@ -66,16 +67,23 @@ def test_history_uses_stored_balances_walks_back_before_them_and_groups_by_class
         {"position": "box", "date": "2026-09-05", "net": "500"},
         {"position": "box", "date": "2026-10-20", "net": "-100"},
     ]
-    rows, gaps = invested_history(history, flows, {"etf": "e7f0"}, CLASSES, "2026-11")
+    rows, gaps, positions = invested_history(
+        history, flows, {"etf": "e7f0"}, CLASSES, "2026-11", position_month="2026-10"
+    )
     totals = {(row["name"], row["month"]): Decimal(row["total"]) for row in rows}
     assert totals["Renda fixa - Inflação", "2026-11"] == 1010
     assert totals["Renda fixa - Inflação", "2026-09"] == 700
     assert totals["ETF renda fixa", "2026-10"] == 700
     assert totals["Renda fixa - CDI", "2026-08"] == 0
     assert totals["Renda fixa - CDI", "2026-10"] == 50
+    assert {row["item"]: row["value"] for row in positions} == {
+        "connection-ntnb": "1000.00",
+        "connection-etf": "700.00",
+        "connection-box": "50.00",
+    }
     assert gaps == [{"name": "Gastos", "currency": "BRL", "amount": "350.00"}]
     # A deleted class falls back to the automatic one.
-    rows, _ = invested_history(history, flows, {"etf": "gone"}, CLASSES, "2026-11")
+    rows, _, _ = invested_history(history, flows, {"etf": "gone"}, CLASSES, "2026-11")
     assert "ETF renda fixa" not in {row["name"] for row in rows}
     assert "" in {row["key"] for row in rows}
 
@@ -115,7 +123,7 @@ def test_curve_positions_earn_their_rate_on_business_days_only(monkeypatch):
     assert values[date(2026, 11, 2)] == 0  # before the purchase
     # Forward to today: 11-18 and 19 earn, 11-20 is a holiday, 11-21 and 22 a weekend.
     assert values[date(2026, 11, 23)] == pytest.approx(Decimal(1000) * Decimal("1.005") ** 2)
-    rows, gaps = invested_history(
+    rows, gaps, _ = invested_history(
         [lca, cdb],
         [],
         {},

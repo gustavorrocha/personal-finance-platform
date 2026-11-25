@@ -3,7 +3,7 @@ from datetime import timedelta
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from finance_api import accounts
+from finance_api import accounts, spending
 from finance_api.main import app
 from finance_ingestion.collection import collect, entity_key, item_key
 from finance_ingestion.spending_demo import load_account_demo, load_demo
@@ -74,6 +74,7 @@ def test_account_history_keeps_published_observations_separate(isolated_warehous
         return [json.loads(line) for line in silver.execute(sql, **parameters).splitlines()]
 
     monkeypatch.setattr(accounts, "dashboard_query", query)
+    monkeypatch.setattr(spending, "dashboard_query", query)
     path = "/api/accounts/history"
     item = item_key(ITEM)
     other = item_key(NEW_ITEM)
@@ -108,6 +109,7 @@ def test_account_snapshot_scopes_distinct_connections_and_keeps_reported_values(
         return [json.loads(line) for line in silver.execute(sql, **parameters).splitlines()]
 
     monkeypatch.setattr(accounts, "dashboard_query", query)
+    monkeypatch.setattr(spending, "dashboard_query", query)
     with TestClient(app) as client:
         response = client.get("/api/accounts")
         assert response.status_code == 200
@@ -138,3 +140,34 @@ def test_account_snapshot_scopes_distinct_connections_and_keeps_reported_values(
             ("BRL", "-320.4"),
             ("USD", None),
         }
+
+
+def test_account_details_keep_card_terms_but_not_the_holder():
+    from decimal import Decimal
+
+    from finance_ingestion.silver import account_details
+
+    card = account_details(
+        {
+            "name": "Synthetic Card",
+            "number": "5555 0000 0000 1234",
+            "owner": "Synthetic Holder",
+            "taxNumber": "98765432100",
+            "creditData": {
+                "brand": "MASTERCARD",
+                "level": "BLACK",
+                "creditLimit": Decimal("1000"),
+                "availableCreditLimit": Decimal("250.5"),
+                "balanceDueDate": "2026-12-10",
+                "balanceCloseDate": "2026-12-03",
+            },
+        }
+    )
+    assert card["name"] == "Synthetic Card"
+    assert card["number_suffix"] == "1234"
+    assert (card["brand"], card["level"]) == ("MASTERCARD", "BLACK")
+    assert card["available_credit"] == "250.500000000000"
+    assert (card["due_date"], card["close_date"]) == ("2026-12-10", "2026-12-03")
+    assert "98765432100" not in str(card) and "Holder" not in str(card)
+    bank = account_details({"name": "Synthetic Holder", "owner": "synthetic holder "})
+    assert bank["name"] is None and bank["number_suffix"] is None

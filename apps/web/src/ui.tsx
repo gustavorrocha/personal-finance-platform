@@ -139,3 +139,22 @@ export function Toast({
     </div>
   );
 }
+
+/** Explanation that stays collapsed behind an ⓘ until asked for. */
+export function Help({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="help">
+      <summary>
+        <span aria-hidden="true">ⓘ </span>
+        {label}
+      </summary>
+      <p>{children}</p>
+    </details>
+  );
+}

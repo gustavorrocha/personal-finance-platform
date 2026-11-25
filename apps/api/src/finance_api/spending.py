@@ -137,6 +137,19 @@ async def dashboard_query(query: str, **parameters: str) -> list[dict]:
         return [json.loads(line) for line in response.text.splitlines()]
 
 
+async def add_institutions(connections: list[dict]) -> None:
+    """The institution's name for each connection, when the provider reported it."""
+    names = {
+        row["item_key"]: row["institution"]
+        for row in await dashboard_query(
+            "SELECT toString(item_key) AS item_key, institution FROM analytics.connection_names "
+            "FORMAT JSONEachRow"
+        )
+    }
+    for connection in connections:
+        connection["institution"] = names.get(connection["id"])
+
+
 @router.get("")
 async def spending(
     item: UUID | Literal["all"] | None = None,
@@ -159,6 +172,7 @@ async def spending(
         "FROM analytics.pending_card_spending) "
         "GROUP BY item_key ORDER BY item_key FORMAT JSONEachRow"
     )
+    await add_institutions(connections)
     for index, row in enumerate(connections, start=1):
         row["is_demo"] = row["id"] == DEMO_ITEM
         row["label"] = "Synthetic demo" if row["is_demo"] else f"Connection {index}"
@@ -181,10 +195,16 @@ async def spending(
         "month": month,
         "totals": [],
         "history": [],
+        "daily": [],
         "investments": [],
         "invested": [],
+        "commitments": [],
+        "installments": [],
+        "net_worth": [],
         "invested_history": [],
         "invested_gaps": [],
+        "investment_positions": [],
+        "investment_connections": [],
         "chart_month": None,
         "expenses": [],
         "has_more_expenses": False,
@@ -246,6 +266,16 @@ async def spending(
         "ORDER BY month, currency, source, status, category, subcategory FORMAT JSONEachRow",
         **window,
     )
+    # Spending per day, for the pace of each month against the previous ones.
+    result["daily"] = await dashboard_query(
+        "SELECT toString(economic_date) AS day, currency, toString(sum(amount)) AS total "
+        "FROM (SELECT item_key, economic_date, currency, toDecimal128(net_amount, 12) AS amount "
+        "FROM analytics.spending_dashboard WHERE included "
+        "UNION ALL SELECT item_key, economic_date, currency, toDecimal128(amount, 12) "
+        "FROM analytics.pending_card_spending) "
+        f"{in_window}GROUP BY day, currency ORDER BY day, currency FORMAT JSONEachRow",
+        **window,
+    )
     result["investments"] = await dashboard_query(
         "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, currency, "
         "kind, toString(sum(amount)) AS total, count() AS entries "
@@ -261,8 +291,42 @@ async def spending(
         "GROUP BY currency, source ORDER BY currency, source FORMAT JSONEachRow",
         **filters,
     )
+    # Card spending not yet billed, from this month on: the open bill and future installments.
+    upcoming = f"WHERE {scope} AND economic_date >= addMonths(toStartOfMonth(today()), 1) "
+    result["commitments"] = await dashboard_query(
+        "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, "
+        "toString(item_key) AS item, currency, "
+        "toString(ifNull(sumIf(amount, ifNull(total_installments, 0) > 1), 0)) AS installments, "
+        "toString(sum(amount)) AS total, count() AS entries "
+        f"FROM analytics.pending_card_spending {upcoming}"
+        "GROUP BY month, item, currency ORDER BY month, item, currency FORMAT JSONEachRow",
+        **filters,
+    )
+    result["installments"] = await dashboard_query(
+        "SELECT toString(item_key) AS item, currency, any(merchant_label) AS merchant, "
+        "any(description) AS description, toString(original_purchase_date) AS purchased, "
+        "total_installments AS count, min(installment_number) AS next, "
+        "toString(any(amount)) AS installment, toString(sum(amount)) AS remaining, "
+        "toString(max(economic_date)) AS last_date "
+        f"FROM analytics.pending_card_spending {upcoming}AND total_installments > 1 "
+        # The open bill's installment can carry another merchant key; the amount does not change.
+        "GROUP BY item_key, currency, original_purchase_date, total_installments, amount "
+        "ORDER BY last_date DESC, remaining DESC LIMIT 100 "
+        "FORMAT JSONEachRow",
+        **filters,
+    )
+    # Latest reported balances of the accounts still considered; cards report what is owed.
+    result["net_worth"] = await dashboard_query(
+        "SELECT currency, account_type AS type, toString(sum(balance)) AS total, "
+        "count() AS accounts FROM analytics.accounts_dashboard "
+        f"WHERE {scope} AND NOT disabled AND balance IS NOT NULL "
+        "AND account_type IN ('BANK', 'CREDIT') "
+        "GROUP BY currency, type ORDER BY currency, type FORMAT JSONEachRow",
+        **filters,
+    )
     positions = await dashboard_query(
-        "SELECT toString(position_key) AS position, toString(observed_on) AS observed_on, "
+        "SELECT toString(position_key) AS position, toString(item_key) AS item, "
+        "toString(observed_on) AS observed_on, "
         "type, subtype, indexer, toString(rate) AS rate, toString(fixed_rate) AS fixed_rate, "
         "toString(purchase_date) AS purchase_date, name, currency, "
         "toString(balance) AS balance, toString(gross) AS gross, "
@@ -301,9 +365,29 @@ async def spending(
         "AND day >= today() - 800) FORMAT JSONEachRow",
         assets=clickhouse_array({asset_key(row) for row in positions} - {None}),
     )
-    result["invested_history"], result["invested_gaps"] = invested_history(
-        positions, flows, assigned, classes, result["chart_month"], rates, prices
+    (
+        result["invested_history"],
+        result["invested_gaps"],
+        result["investment_positions"],
+    ) = invested_history(
+        positions,
+        flows,
+        assigned,
+        classes,
+        result["chart_month"],
+        rates,
+        prices,
+        position_month=month,
     )
+    known = {row["id"]: row for row in connections}
+    position_items = sorted({row["item"] for row in result["investment_positions"]})
+    missing = [
+        {"id": key, "is_demo": key == DEMO_ITEM} for key in position_items if key not in known
+    ]
+    if missing:
+        await add_institutions(missing)
+        known.update((row["id"], row) for row in missing)
+    result["investment_connections"] = [known[key] for key in position_items]
     result["invested_returns"] = invested_returns(
         positions, flows, assigned, classes, rates, prices
     )

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { categoryTree, type CategoryNode } from "./categories";
 import { formatDate, formatMoney, messages, type Locale } from "./locale";
-import { Dialog } from "./ui";
+import { Dialog, Help } from "./ui";
 
 type Suggestion = {
   kind: "observed" | "estimated";
@@ -132,7 +132,7 @@ export function SavingsBoxSuggestions({
       <h2 id="box-suggestions">
         {copy.boxSuggestions} ({result.suggestions.length})
       </h2>
-      <p>
+      <Help label={copy.howItWorks}>
         {copy.boxSuggestionsHelp}{" "}
         {copy.boxYield.replace(
           "{rate}",
@@ -140,7 +140,7 @@ export function SavingsBoxSuggestions({
             result.daily_rate * 100,
           ),
         )}
-      </p>
+      </Help>
       <ul>
         {result.gaps.map((gap) => (
           <li key={`${gap.item}-${gap.box}`}>
