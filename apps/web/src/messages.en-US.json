@@ -268,7 +268,7 @@
   "cashFlowTotal": "Spent + invested",
   "returnsTile": "Return in 12 months",
   "seeInvestments": "See investments",
-  "reportedPositions": "Reported positions",
+  "reportedPositions": "Latest positions reported by institutions",
   "subcategories": "Subcategories",
   "chartMode": "Chart mode",
   "amountsMode": "Amounts",
@@ -290,5 +290,11 @@
   "monthlyAverage": "Monthly average",
   "categoryChart": "Spending by category",
   "categoryChartHelp": "Each column is a month, split by category. Click a category in the legend to split it into subcategories, or a column to open that month.",
-  "allCategories": "All categories"
+  "allCategories": "All categories",
+  "refreshing": "Updating results. Previous values are shown until the update finishes.",
+  "monthlyPositionTitle": "Positions in {month}",
+  "monthlyPositionHelp": "Estimated values at month end, or as of today for the current month. The institution is the source of each position.",
+  "monthlyPositionValue": "Estimated value",
+  "monthlyPositionInstitution": "Institution",
+  "noMonthlyPositions": "There are no positions with an estimated balance for this period and connection."
 }

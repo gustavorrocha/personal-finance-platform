@@ -3,7 +3,11 @@ import { createRoot } from "react-dom/client";
 import { AccountsView } from "./accounts";
 import { CategoriesView, categoryPath, type CategoryNode } from "./categories";
 import { connectionLabel, visibleConnections } from "./connections";
-import { InvestmentsView } from "./investments";
+import {
+  InvestmentsView,
+  MonthlyInvestmentPositions,
+  type MonthlyPosition,
+} from "./investments";
 import {
   ExpenseDialog,
   type DialogExpense,
@@ -93,6 +97,8 @@ type Spending = {
   invested_returns?: InvestmentReturnsData;
   chart_month?: string | null;
   invested?: InvestedRow[];
+  investment_positions?: MonthlyPosition[];
+  investment_connections?: Connection[];
   daily?: DailyRow[];
   expenses: Expense[];
   has_more_expenses?: boolean;
@@ -654,6 +660,11 @@ function App() {
         onClose={() => setSelected(undefined)}
       />
       {view === "accounts" && <AccountsView locale={locale} />}
+      {DATA_VIEWS.includes(view) && loading && data && (
+        <p className="frame refresh-status" role="status">
+          {copy.refreshing}
+        </p>
+      )}
       <main
         className={loading && data ? "frame refreshing" : "frame"}
         hidden={!DATA_VIEWS.includes(view)}
@@ -1216,6 +1227,14 @@ function App() {
                 locale={locale}
               />
             </div>
+            {data.month && (
+              <MonthlyInvestmentPositions
+                month={data.month}
+                positions={data.investment_positions ?? []}
+                connections={data.investment_connections ?? []}
+                locale={locale}
+              />
+            )}
             {(data.invested_history ?? []).length > 0 && (
               <section className="panel" aria-labelledby="invested-evolution">
                 <h2 id="invested-evolution">{copy.investedEvolution}</h2>

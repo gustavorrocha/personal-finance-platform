@@ -235,6 +235,10 @@ export function CashFlow({
   onSelect: (month: string) => void;
 }) {
   const copy = messages[locale];
+  const axisMonth = new Intl.DateTimeFormat(locale, {
+    month: "short",
+    timeZone: "UTC",
+  });
   const shown = [
     ...new Set([
       ...currencies(history),
@@ -276,7 +280,7 @@ export function CashFlow({
         return (
           <div className="chart" key={currency}>
             {shown.length > 1 && <h3>{currency}</h3>}
-            <div className="month-chart">
+            <div className="month-chart cash-flow-months">
               {rows.map((row) => (
                 <button
                   type="button"
@@ -315,7 +319,10 @@ export function CashFlow({
                     />
                   </span>
                   <span className="month-label" aria-hidden="true">
-                    {monthLabel(row.month, locale)}
+                    {axisMonth
+                      .format(new Date(`${row.month}-01T00:00:00Z`))
+                      .replace(/\.$/, "")}
+                    <span>{row.month.slice(2, 4)}</span>
                   </span>
                 </button>
               ))}

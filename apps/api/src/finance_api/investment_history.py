@@ -242,7 +242,9 @@ def invested_history(
     month: str,
     rates: list[dict] | None = None,
     prices: list[dict] | None = None,
-) -> tuple[list[dict], list[dict]]:
+    *,
+    position_month: str | None = None,
+) -> tuple[list[dict], list[dict], list[dict]]:
     """history: position, observed_on, type, subtype, indexer, rate, fixed_rate,
     purchase_date, name, currency, balance and gross (one per day).
     flows: position, date, net (purchases and contributions positive).
@@ -250,7 +252,7 @@ def invested_history(
     prices: asset (see asset_key), day, price.
     Returns rows (month, currency, key = class id or "", name, total) for the 12 months up
     to `month`, and gaps: positions whose walk back fell below zero, such as a savings box
-    that paid a bill without a reported withdrawal.
+    that paid a bill without a reported withdrawal, and nonzero positions for position_month.
     """
     today = date.today()
     first = date.fromisoformat(f"{month}-01")
@@ -260,10 +262,13 @@ def invested_history(
         for offset in range(11, -1, -1)
     ]
     months = [slot for slot in months if slot <= today.strftime("%Y-%m")]
+    if not months:
+        return [], [], []
     start = date.fromisoformat(f"{months[0]}-01") - DAY
     series, quotes, names, snapshots, moves = prepare(history, flows, classes, rates, prices)
     totals: dict[tuple[str, str, str], Decimal] = {}
     gaps = []
+    positions = []
     for position, rows in snapshots.items():
         latest = rows[-1]
         key = position_class(latest, assigned, set(names))
@@ -276,6 +281,17 @@ def invested_history(
             lowest = min(lowest, value)
             group = (slot, latest["currency"], key)
             totals[group] = totals.get(group, Decimal(0)) + max(Decimal(0), value)
+            if slot == position_month and (rounded := value.quantize(Decimal("0.01"))) > 0:
+                positions.append(
+                    {
+                        "id": position,
+                        "item": latest["item"],
+                        "name": latest["name"] or latest.get("symbol") or "",
+                        "type": latest["type"],
+                        "currency": latest["currency"],
+                        "value": str(rounded),
+                    }
+                )
         if lowest <= -1:
             gaps.append(
                 {
@@ -296,7 +312,7 @@ def invested_history(
         for (slot, currency, key), total in sorted(totals.items())
         if (currency, key) in present
     ]
-    return rows, gaps
+    return rows, gaps, positions
 
 
 PERIODS = ("month", "3m", "6m", "12m", "ytd")

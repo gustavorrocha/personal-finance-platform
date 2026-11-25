@@ -269,7 +269,7 @@
     "cashFlowTotal": "6628f7a4137a34197c58bd195dc275bd47de42c2b0c4900064aa12f24ec0121f",
     "returnsTile": "cc11a3dbe58fd0ee044771fca019cca5ea3ca335ebee9cf270b8fdea155fd7a4",
     "seeInvestments": "652c04c33c2055eec41f2997010744fac871608f4cf5764672df23917d8e704b",
-    "reportedPositions": "aad93f4dbd60c6a65462e8213973660f966c9c98921a3b24b370f835b7464d9f",
+    "reportedPositions": "8d7bb9e40c857ad234ecce76852cf97b167b2f7f8aca18d9eb573395aa0ceb3a",
     "subcategories": "c249a9a4a69a8a45393e643fff0439d6025409e2bb51b01116af5521e0897e2b",
     "chartMode": "9b19d23e1b509b734d3fc9a648d642ee2bae0fcce9cd619c1b70eaa02f16f3b3",
     "amountsMode": "eea6a22480bf916161993fd5a5a4227ea46c5f39f2cc08f208298fdb127f2255",
@@ -291,7 +291,13 @@
     "monthlyAverage": "0aa505a022af64d34b218a0244945d9f09ca46b817759d28e148f34f5c40c9aa",
     "categoryChart": "904296d1e58363a48217c62398a0a5f0b822686aaab4bb22c37b05bcb347c8a4",
     "categoryChartHelp": "26e82ad3abc8d91122b92f169623505f4f90dddc6bcd44923f53ddb1b591eece",
-    "allCategories": "9d5097a837102a179a2d08a921a260c5058495e78469c3f1bad37a1b4bf59053"
+    "allCategories": "9d5097a837102a179a2d08a921a260c5058495e78469c3f1bad37a1b4bf59053",
+    "refreshing": "57e337d02572f534ff3b5e158b15436c45b4c63c4b573e29b18f9b20cc66544f",
+    "monthlyPositionTitle": "1c44ff67a44258742d6318683caa316541cbfb1e8f999771cd4995881ea61b5f",
+    "monthlyPositionHelp": "493cabfbd6539bc456d5cded850fb24d4d34bf6b37e0bcb267b67dd76e48a775",
+    "monthlyPositionValue": "c5cfb642ded824ecc33fa5f11e5a602b675ff3b18085cf1cf44318ee96d0e3c7",
+    "monthlyPositionInstitution": "65a1553729e30faf7ed329a80f1f3d6999751d84f49a117d1d8be87f25175fb3",
+    "noMonthlyPositions": "d3594cc999c35048160269324f3dda68c3383a1ea92ecc2de252e57e9975da7f"
   },
   "messages": {
     "brand": "Finanças Pessoais",
@@ -563,7 +569,7 @@
     "cashFlowTotal": "Gasto + investido",
     "returnsTile": "Rentabilidade em 12 meses",
     "seeInvestments": "Ver investimentos",
-    "reportedPositions": "Posições informadas",
+    "reportedPositions": "?ltimas posi??es informadas pelas institui??es",
     "subcategories": "Subcategorias",
     "chartMode": "Modo do gráfico",
     "amountsMode": "Valores",
@@ -585,6 +591,12 @@
     "monthlyAverage": "Média mensal",
     "categoryChart": "Gastos por categoria",
     "categoryChartHelp": "Cada coluna é um mês, dividido por categoria. Clique numa categoria da legenda para dividi-la em subcategorias, ou numa coluna para abrir aquele mês.",
-    "allCategories": "Todas as categorias"
+    "allCategories": "Todas as categorias",
+    "refreshing": "Atualizando resultados. Os valores anteriores ficam vis?veis at? a atualiza??o terminar.",
+    "monthlyPositionTitle": "Posi??es em {month}",
+    "monthlyPositionHelp": "Valores estimados no fim do m?s, ou at? hoje para o m?s atual. A institui??o indica de qual conex?o veio a posi??o.",
+    "monthlyPositionValue": "Valor estimado",
+    "monthlyPositionInstitution": "Institui??o",
+    "noMonthlyPositions": "N?o h? posi??es com saldo estimado para este per?odo e conex?o."
   }
 }

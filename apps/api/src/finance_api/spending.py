@@ -200,6 +200,8 @@ async def spending(
         "invested": [],
         "invested_history": [],
         "invested_gaps": [],
+        "investment_positions": [],
+        "investment_connections": [],
         "chart_month": None,
         "expenses": [],
         "has_more_expenses": False,
@@ -287,7 +289,8 @@ async def spending(
         **filters,
     )
     positions = await dashboard_query(
-        "SELECT toString(position_key) AS position, toString(observed_on) AS observed_on, "
+        "SELECT toString(position_key) AS position, toString(item_key) AS item, "
+        "toString(observed_on) AS observed_on, "
         "type, subtype, indexer, toString(rate) AS rate, toString(fixed_rate) AS fixed_rate, "
         "toString(purchase_date) AS purchase_date, name, currency, "
         "toString(balance) AS balance, toString(gross) AS gross, "
@@ -326,9 +329,29 @@ async def spending(
         "AND day >= today() - 800) FORMAT JSONEachRow",
         assets=clickhouse_array({asset_key(row) for row in positions} - {None}),
     )
-    result["invested_history"], result["invested_gaps"] = invested_history(
-        positions, flows, assigned, classes, result["chart_month"], rates, prices
+    (
+        result["invested_history"],
+        result["invested_gaps"],
+        result["investment_positions"],
+    ) = invested_history(
+        positions,
+        flows,
+        assigned,
+        classes,
+        result["chart_month"],
+        rates,
+        prices,
+        position_month=month,
     )
+    known = {row["id"]: row for row in connections}
+    position_items = sorted({row["item"] for row in result["investment_positions"]})
+    missing = [
+        {"id": key, "is_demo": key == DEMO_ITEM} for key in position_items if key not in known
+    ]
+    if missing:
+        await add_institutions(missing)
+        known.update((row["id"], row) for row in missing)
+    result["investment_connections"] = [known[key] for key in position_items]
     result["invested_returns"] = invested_returns(
         positions, flows, assigned, classes, rates, prices
     )

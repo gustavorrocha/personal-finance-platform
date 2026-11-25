@@ -379,6 +379,7 @@ summary {
   height: 0.35rem;
 }
 .table-wrap {
+  position: relative;
   overflow-x: auto;
 }
 .transaction-details {
@@ -1034,6 +1035,38 @@ tr.returns-benchmark td {
 .pair-plot {
   position: relative;
 }
+.cash-flow-months .month-label {
+  justify-self: center;
+  writing-mode: horizontal-tb;
+  transform: none;
+  line-height: 1.2;
+  font-size: 0.6875rem;
+}
+.cash-flow-months .month-label span {
+  display: block;
+}
+@media (max-width: 640px) {
+  .cash-flow-months {
+    gap: 0.0625rem;
+  }
+  .cash-flow-months .month-label {
+    font-size: 0.625rem;
+    letter-spacing: -0.025em;
+  }
+}
+@media (max-width: 360px) {
+  .cash-flow-months .month-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 0.6875rem;
+  }
+  .cash-flow-months .month-label span {
+    display: inline;
+  }
+  .cash-flow-months .month-label span::before {
+    content: "/";
+  }
+}
 .pair-plot .zero {
   position: absolute;
   inset-inline: 0;
@@ -1193,4 +1226,57 @@ tr.disabled > :not(:last-child) {
 }
 .swatch.series-8 {
   background: #e34948;
+}
+
+/* Keep filters and the current report easy to scan on narrow screens. */
+.dashboard-nav {
+  gap: 0.25rem;
+  border-bottom: 1px solid #d4ded4;
+}
+.dashboard-nav a {
+  border-radius: 0.35rem 0.35rem 0 0;
+}
+.dashboard-nav a[aria-current] {
+  box-shadow: inset 0 -3px #236b50;
+}
+.refresh-status {
+  margin-block: 1rem -1.75rem;
+  padding: 0.65rem 0.85rem;
+  border-left: 3px solid #236b50;
+  background: #e5efe5;
+  font-size: 0.875rem;
+}
+@media (max-width: 640px) {
+  .frame {
+    width: calc(100% - 2rem);
+  }
+  main {
+    padding-block: 1.75rem 3rem;
+  }
+  .dashboard-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 0.1rem;
+  }
+  .settings-link {
+    margin-inline-start: 0;
+  }
+  .intro,
+  .intro .filters {
+    width: 100%;
+  }
+  .intro .filters label {
+    flex: 1 1 7rem;
+    min-width: 0;
+  }
+  .intro .filters select {
+    width: 100%;
+    min-width: 0;
+  }
+  .summary > div,
+  .panel,
+  .empty {
+    padding: 1rem;
+  }
 }

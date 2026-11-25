@@ -1,7 +1,9 @@
 import { summarizeInvestmentBalances } from "./balance-summary";
 import { BalanceSummary } from "./balance-summary-view";
+import { connectionLabel } from "./connections";
 import {
   formatDate,
+  formatMoney,
   formatReportedValue,
   investmentTypeLabel,
   messages,
@@ -26,6 +28,101 @@ type Position = {
   observed_at: string;
 };
 type InvestmentSnapshot = Snapshot & { positions: Position[] };
+
+export type MonthlyPosition = {
+  id: string;
+  item: string;
+  name: string;
+  type: string | null;
+  currency: string;
+  value: string;
+};
+
+export function MonthlyInvestmentPositions({
+  month,
+  positions,
+  connections,
+  locale,
+}: {
+  month: string;
+  positions: MonthlyPosition[];
+  connections: Snapshot["connections"];
+  locale: Locale;
+}) {
+  const copy = messages[locale];
+  const period = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${month}-01T00:00:00Z`));
+  const labels = new Map(
+    connections.map((connection) => [
+      connection.id,
+      connectionLabel(
+        connections,
+        connection,
+        copy.connection,
+        copy.syntheticDemo,
+      ),
+    ]),
+  );
+  const rows = positions.map((row) => ({
+    ...row,
+    location: labels.get(row.item) ?? copy.unavailable,
+  }));
+  rows.sort(
+    (a, b) =>
+      a.location.localeCompare(b.location, locale) ||
+      a.currency.localeCompare(b.currency) ||
+      Number(b.value) - Number(a.value),
+  );
+
+  return (
+    <section className="panel" aria-labelledby="monthly-positions">
+      <h2 id="monthly-positions">
+        {copy.monthlyPositionTitle.replace("{month}", period)}
+      </h2>
+      {rows.length ? (
+        <>
+          <p>{copy.monthlyPositionHelp}</p>
+          <div
+            className="table-wrap"
+            role="region"
+            aria-labelledby="monthly-positions"
+            tabIndex={0}
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">{copy.position}</th>
+                  <th scope="col">{copy.monthlyPositionInstitution}</th>
+                  <th scope="col">{copy.investmentType}</th>
+                  <th scope="col" className="numeric">
+                    {copy.monthlyPositionValue}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <th scope="row">{row.name || copy.unavailable}</th>
+                    <td>{row.location}</td>
+                    <td>{investmentTypeLabel(row.type, locale)}</td>
+                    <td className="numeric">
+                      {formatMoney(row.value, row.currency, locale)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <p>{copy.noMonthlyPositions}</p>
+      )}
+    </section>
+  );
+}
 
 export function InvestmentsView({
   locale,
