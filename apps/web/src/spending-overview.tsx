@@ -87,13 +87,10 @@ export function MonthOverview({
               </dt>
               <dd>{money(current.card)}</dd>
               {current.pending !== 0 && (
-                <>
-                  <dt>
-                    <i className="swatch pending" aria-hidden="true" />
-                    {copy.pendingCard}
-                  </dt>
-                  <dd>{money(current.pending)}</dd>
-                </>
+                <dd className="breakdown-note">
+                  <i className="swatch pending" aria-hidden="true" />
+                  {copy.pendingNote.replace("{amount}", money(current.pending))}
+                </dd>
               )}
             </dl>
             <small>
@@ -1121,6 +1118,259 @@ export function CategoryChart({
             </button>
           ))}
         </div>
+      </div>
+    );
+  });
+}
+
+export type NetWorthRow = {
+  currency: string;
+  type: "BANK" | "CREDIT";
+  total: string;
+  accounts: number | string;
+};
+
+/** Account balances plus investments, minus what the cards owe (installments included). */
+export function NetWorthTile({
+  accounts,
+  invested,
+  upcoming,
+  locale,
+}: {
+  accounts: NetWorthRow[];
+  invested: InvestedRow[];
+  /** Card spending billed after this month; the card balances already include it. */
+  upcoming: CommitmentRow[];
+  locale: Locale;
+}) {
+  const copy = messages[locale];
+  return [
+    ...new Set([...accounts, ...invested].map((row) => row.currency)),
+  ].map((currency) => {
+    const sum = (rows: { currency: string; total: string }[]) =>
+      rows
+        .filter((row) => row.currency === currency)
+        .reduce((total, row) => total + Number(row.total), 0);
+    const bank = sum(accounts.filter((row) => row.type === "BANK"));
+    const cards = sum(accounts.filter((row) => row.type === "CREDIT"));
+    const later = Math.min(cards, sum(upcoming));
+    const positions = sum(invested.filter((row) => row.source === "positions"));
+    const boxes = sum(invested.filter((row) => row.source === "savings_boxes"));
+    const money = (value: number) =>
+      formatMoney(String(value), currency, locale);
+    return (
+      <div key={`net-worth-${currency}`}>
+        <span>
+          {copy.netWorth} · {currency}
+        </span>
+        <strong>{money(bank + positions + boxes - cards)}</strong>
+        <small>{copy.netWorthHelp}</small>
+        <dl className="breakdown">
+          <dt>{copy.investmentPositions}</dt>
+          <dd>{money(positions)}</dd>
+          <dt>{copy.savingsBoxes}</dt>
+          <dd>{money(boxes)}</dd>
+          <dt>{copy.netWorthAccounts}</dt>
+          <dd>{money(bank)}</dd>
+          <dt>{copy.netWorthCards}</dt>
+          <dd className="negative">{money(-(cards - later))}</dd>
+          {later > 0 && (
+            <>
+              <dt>{copy.netWorthLaterInstallments}</dt>
+              <dd className="negative">{money(-later)}</dd>
+            </>
+          )}
+        </dl>
+      </div>
+    );
+  });
+}
+
+export type CommitmentRow = {
+  month: string;
+  item: string;
+  currency: string;
+  installments: string;
+  total: string;
+  entries: number | string;
+};
+
+export type InstallmentRow = {
+  item: string;
+  currency: string;
+  merchant: string;
+  description: string;
+  purchased: string | null;
+  count: number;
+  next: number;
+  installment: string;
+  remaining: string;
+  last_date: string;
+};
+
+/** Card spending already made that is billed in the coming months, and the installments behind it. */
+export function Commitments({
+  rows,
+  installments,
+  locale,
+  connection,
+}: {
+  rows: CommitmentRow[];
+  installments: InstallmentRow[];
+  locale: Locale;
+  /** Connection names, when several are combined. */
+  connection?: (item: string) => string | undefined;
+}) {
+  const copy = messages[locale];
+  const shown = [...new Set(rows.map((row) => row.currency))].sort();
+  if (!shown.length) return <p>{copy.noUpcoming}</p>;
+  return shown.map((currency) => {
+    const own = rows.filter((row) => row.currency === currency);
+    const months = [...new Set(own.map((row) => row.month))]
+      .sort()
+      .slice(0, 12);
+    const money = (value: number | string) =>
+      formatMoney(String(value), currency, locale);
+    const short = new Intl.NumberFormat(locale, {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    });
+    const columns = months.map((month) => {
+      const parts = own.filter((row) => row.month === month);
+      const total = parts.reduce((sum, row) => sum + Number(row.total), 0);
+      const parcels = parts.reduce(
+        (sum, row) => sum + Number(row.installments),
+        0,
+      );
+      return { month, parts, total, parcels };
+    });
+    const max = Math.max(1, ...columns.map((column) => column.total));
+    const grand = columns.reduce((sum, column) => sum + column.total, 0);
+    const purchases = installments.filter((row) => row.currency === currency);
+    return (
+      <div className="chart" key={currency}>
+        {shown.length > 1 && <h3>{currency}</h3>}
+        <p className="upcoming-lead">
+          <strong>{money(grand)}</strong>{" "}
+          {copy.upcomingLead.replace(
+            "{month}",
+            monthLabel(months.at(-1) ?? "", locale, true),
+          )}
+        </p>
+        <div
+          className="month-chart upcoming-chart"
+          role="list"
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(columns.length, 6)}, minmax(0, 1fr))`,
+          }}
+        >
+          {columns.map((column) => (
+            <div
+              className="month-column"
+              role="listitem"
+              tabIndex={0}
+              key={column.month}
+              aria-label={`${monthLabel(column.month, locale, true)}: ${money(column.total)}`}
+            >
+              <span className="month-tooltip" aria-hidden="true">
+                <b>{monthLabel(column.month, locale, true)}</b>
+                {column.total - column.parcels > 0.005 && (
+                  <>
+                    <span>
+                      {copy.upcomingInstallments}: {money(column.parcels)}
+                    </span>
+                    <span>
+                      {copy.upcomingOther}:{" "}
+                      {money(column.total - column.parcels)}
+                    </span>
+                  </>
+                )}
+                {connection &&
+                  column.parts.map((part) => (
+                    <span key={part.item}>
+                      {connection(part.item)}: {money(part.total)}
+                    </span>
+                  ))}
+                <b>
+                  {copy.total}: {money(column.total)}
+                </b>
+              </span>
+              <span className="month-plot" aria-hidden="true">
+                <span className="month-value">
+                  {short.format(column.total)}
+                </span>
+                <span
+                  className="month-stack"
+                  style={{ height: `${(column.total / max) * 85}%` }}
+                >
+                  <span className="swatch card" style={{ flexGrow: 1 }} />
+                </span>
+              </span>
+              <span className="month-label" aria-hidden="true">
+                {monthLabel(column.month, locale)}
+              </span>
+            </div>
+          ))}
+        </div>
+        {purchases.length > 0 && (
+          <div className="table-wrap">
+            <table className="investment-table installments-table">
+              <thead>
+                <tr>
+                  <th scope="col">{copy.installmentPurchase}</th>
+                  <th scope="col">{copy.installmentProgress}</th>
+                  <th scope="col" className="numeric">
+                    {copy.installmentAmount}
+                  </th>
+                  <th scope="col" className="numeric">
+                    {copy.installmentRemaining}
+                  </th>
+                  <th scope="col" className="numeric">
+                    {copy.installmentEnds}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchases.map((row) => (
+                  <tr
+                    key={`${row.item}|${row.purchased}|${row.count}|${row.installment}`}
+                  >
+                    <th scope="row">
+                      {row.merchant || row.description || copy.unavailable}
+                      <small>
+                        {[
+                          connection?.(row.item),
+                          row.purchased && formatDate(row.purchased, locale),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </th>
+                    <td>
+                      <span className="installment-count">
+                        {copy.installmentRange
+                          .replace("{next}", String(row.next))
+                          .replaceAll("{count}", String(row.count))}
+                      </span>
+                      <progress
+                        max={row.count}
+                        value={row.next - 1}
+                        aria-hidden="true"
+                      />
+                    </td>
+                    <td className="numeric">{money(row.installment)}</td>
+                    <td className="numeric">
+                      <b>{money(row.remaining)}</b>
+                    </td>
+                    <td className="numeric">
+                      {monthLabel(row.last_date.slice(0, 7), locale)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     );
   });

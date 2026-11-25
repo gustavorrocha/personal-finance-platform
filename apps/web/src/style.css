@@ -1280,3 +1280,71 @@ tr.disabled > :not(:last-child) {
     padding: 1rem;
   }
 }
+
+.upcoming-lead {
+  margin: 0.4rem 0 1rem;
+}
+.upcoming-lead strong {
+  font-size: 1.35rem;
+  color: #173c30;
+  font-variant-numeric: tabular-nums;
+}
+.upcoming-chart .month-plot {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+.month-value {
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: #173c30;
+  font-variant-numeric: tabular-nums;
+}
+.installments-table {
+  margin-top: 1.25rem;
+}
+.installments-table th[scope="row"] small {
+  display: block;
+  font-weight: 400;
+  color: #42594f;
+}
+.installments-table progress {
+  display: block;
+  width: 7rem;
+  height: 0.35rem;
+  margin-top: 0.3rem;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: #e3ebe3;
+  overflow: hidden;
+  accent-color: #c96f2a;
+}
+.installments-table progress::-webkit-progress-bar {
+  background: #e3ebe3;
+}
+.installments-table progress::-webkit-progress-value {
+  background: #c96f2a;
+}
+.installments-table progress::-moz-progress-bar {
+  background: #c96f2a;
+}
+.breakdown .negative {
+  color: #a8412d;
+}
+.upcoming-chart .month-label {
+  text-align: center;
+}
+
+.breakdown .breakdown-note {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: -0.2rem;
+  padding-left: 1.4rem;
+  text-align: left;
+  font-size: 0.8rem;
+  color: #42594f;
+}

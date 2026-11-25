@@ -198,6 +198,9 @@ async def spending(
         "daily": [],
         "investments": [],
         "invested": [],
+        "commitments": [],
+        "installments": [],
+        "net_worth": [],
         "invested_history": [],
         "invested_gaps": [],
         "investment_positions": [],
@@ -286,6 +289,39 @@ async def spending(
         "toString(max(observed_on)) AS observed_on "
         f"FROM analytics.invested_balances WHERE {scope} "
         "GROUP BY currency, source ORDER BY currency, source FORMAT JSONEachRow",
+        **filters,
+    )
+    # Card spending not yet billed, from this month on: the open bill and future installments.
+    upcoming = f"WHERE {scope} AND economic_date >= addMonths(toStartOfMonth(today()), 1) "
+    result["commitments"] = await dashboard_query(
+        "SELECT formatDateTime(toStartOfMonth(economic_date), '%Y-%m') AS month, "
+        "toString(item_key) AS item, currency, "
+        "toString(ifNull(sumIf(amount, ifNull(total_installments, 0) > 1), 0)) AS installments, "
+        "toString(sum(amount)) AS total, count() AS entries "
+        f"FROM analytics.pending_card_spending {upcoming}"
+        "GROUP BY month, item, currency ORDER BY month, item, currency FORMAT JSONEachRow",
+        **filters,
+    )
+    result["installments"] = await dashboard_query(
+        "SELECT toString(item_key) AS item, currency, any(merchant_label) AS merchant, "
+        "any(description) AS description, toString(original_purchase_date) AS purchased, "
+        "total_installments AS count, min(installment_number) AS next, "
+        "toString(any(amount)) AS installment, toString(sum(amount)) AS remaining, "
+        "toString(max(economic_date)) AS last_date "
+        f"FROM analytics.pending_card_spending {upcoming}AND total_installments > 1 "
+        # The open bill's installment can carry another merchant key; the amount does not change.
+        "GROUP BY item_key, currency, original_purchase_date, total_installments, amount "
+        "ORDER BY last_date DESC, remaining DESC LIMIT 100 "
+        "FORMAT JSONEachRow",
+        **filters,
+    )
+    # Latest reported balances of the accounts still considered; cards report what is owed.
+    result["net_worth"] = await dashboard_query(
+        "SELECT currency, account_type AS type, toString(sum(balance)) AS total, "
+        "count() AS accounts FROM analytics.accounts_dashboard "
+        f"WHERE {scope} AND NOT disabled AND balance IS NOT NULL "
+        "AND account_type IN ('BANK', 'CREDIT') "
+        "GROUP BY currency, type ORDER BY currency, type FORMAT JSONEachRow",
         **filters,
     )
     positions = await dashboard_query(

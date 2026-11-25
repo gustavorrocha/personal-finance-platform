@@ -20,6 +20,11 @@ import { Menu, Toast, Help } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
   CategoryChart,
+  Commitments,
+  type CommitmentRow,
+  type InstallmentRow,
+  NetWorthTile,
+  type NetWorthRow,
   CategoryComparison,
   CategoryMonthsTable,
   InvestmentComparison,
@@ -97,6 +102,9 @@ type Spending = {
   invested_returns?: InvestmentReturnsData;
   chart_month?: string | null;
   invested?: InvestedRow[];
+  commitments?: CommitmentRow[];
+  installments?: InstallmentRow[];
+  net_worth?: NetWorthRow[];
   investment_positions?: MonthlyPosition[];
   investment_connections?: Connection[];
   daily?: DailyRow[];
@@ -782,7 +790,12 @@ function App() {
               month={data.month ?? ""}
               locale={locale}
             >
-              <InvestedTotal rows={invested} locale={locale} />
+              <NetWorthTile
+                accounts={data.net_worth ?? []}
+                invested={invested}
+                upcoming={data.commitments ?? []}
+                locale={locale}
+              />
               {data.invested_returns && (
                 <ReturnsTile data={data.invested_returns} locale={locale} />
               )}
@@ -908,6 +921,18 @@ function App() {
                   setPage(1);
                   setMonth(value);
                 }}
+              />
+            </section>
+            <section className="panel" aria-labelledby="upcoming">
+              <h2 id="upcoming">{copy.upcomingTitle}</h2>
+              <Help label={copy.howItWorks}>{copy.upcomingHelp}</Help>
+              <Commitments
+                rows={data.commitments ?? []}
+                installments={data.installments ?? []}
+                locale={locale}
+                connection={
+                  combined ? (item) => connectionLabels.get(item) : undefined
+                }
               />
             </section>
             <section className="panel" aria-labelledby="category-months">
