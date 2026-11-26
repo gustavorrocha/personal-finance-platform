@@ -71,3 +71,14 @@ test("the offline catalog check rejects stale, missing, and invalid translations
     rmdirSync(root);
   }
 });
+
+test("translations keep their accents", async () => {
+  const { messages } = (
+    await import("./messages.pt-BR.json", { with: { type: "json" } })
+  ).default;
+  // A letter next to "?" means accents were lost to a non-UTF-8 write.
+  const broken = Object.entries(messages as Record<string, string>).filter(
+    ([, text]) => /\p{L}\?|\?\p{L}/u.test(text),
+  );
+  assert.deepEqual(broken, []);
+});
