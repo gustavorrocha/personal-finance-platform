@@ -11,4 +11,15 @@ Invoke-Checked uv @('run', '--frozen', 'python', 'scripts/phase0.py', 'migrate')
 Invoke-Checked docker ($compose + @('up', '-d', '--build', '--wait', '--wait-timeout', '180') + $dashboardServices)
 $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health' -TimeoutSec 5
 if ($health.status -ne 'ok' -or $health.phase -ne 0) { throw 'Health contract failed.' }
+# The sync agent runs the updates requested from the dashboard; restart it with the stack.
+$agentPid = Join-Path $env:FINANCE_PRIVATE_DIR 'sync-agent.pid'
+if (Test-Path -LiteralPath $agentPid) {
+    $previous = (Get-Content -LiteralPath $agentPid -Raw).Trim()
+    if ($previous -match '^\d+$' -and (Get-Process -Id $previous -ErrorAction SilentlyContinue)) {
+        & taskkill.exe /PID $previous /T /F | Out-Null
+    }
+}
+$agent = Start-Process -FilePath 'uv' -ArgumentList @('run', '--frozen', 'finance', 'sync-agent') `
+    -WindowStyle Hidden -PassThru
+Set-Content -LiteralPath $agentPid -Value $agent.Id -Encoding ascii
 Write-Output 'Phase 0 ready: http://127.0.0.1:8080'

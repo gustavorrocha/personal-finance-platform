@@ -67,6 +67,10 @@ def configure(private: Path) -> None:
         "<query>GRANT INSERT ON core.investment_class_assignments</query>"
         "<query>GRANT SYSTEM RELOAD DICTIONARY ON *.*</query>"
         "<query>GRANT INSERT ON core.spending_reviews</query>"
+        "<query>GRANT SELECT, INSERT ON core.agent_requests</query>"
+        "<query>GRANT SELECT ON metadata.agent_events</query>"
+        "<query>GRANT SELECT, INSERT ON core.agent_files</query>"
+        "<query>GRANT SELECT ON metadata.ingestion_publications</query>"
         "</grants></dashboard></users></clickhouse>"
     )
     if not config_file.exists() or config_file.read_text(encoding="utf-8") != config:
