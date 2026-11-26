@@ -92,7 +92,7 @@ id do item mudou.
 ## Backup e restauração
 
 Um backup é um único arquivo `.zip` com as suas edições (categorias, regras,
-revisões, lançamentos manuais, classes de investimento e contas desativadas) em
+revisões, lançamentos manuais, classes e metas de investimento e contas desativadas) em
 tabelas Parquet, mais as respostas originais da Pluggy. Taxas e preços públicos ficam
 de fora; o `market-sync` baixa de novo. Guarde as respostas originais: a Pluggy não
 garante manter todo o seu histórico.
@@ -121,7 +121,7 @@ pasta compartilhada.
 | **Visão geral** | Gasto do mês contra o anterior, ritmo do mês contra a média de 6 meses, para onde foi o dinheiro (gasto x investido), patrimônio líquido e rentabilidade dos investimentos em 12 meses. |
 | **Gastos mensais** | Comparativo de 12 meses, categorias contra o mês anterior, gastos por categoria ao longo do tempo, gastos futuros no cartão (parcelas já comprometidas), tabela de categorias por mês e a lista de despesas, onde você define as categorias. |
 | **Pendências** | Débitos que as regras não conseguem classificar sozinhas, como um PIX para uma pessoa, e dinheiro que saiu de uma caixinha sem pagamento informado. Inclua ou exclua cada um. |
-| **Investimentos** | Posições e caixinhas mês a mês, aportes e resgates, e rentabilidade comparada ao CDI, agrupadas em classes que você define. |
+| **Investimentos** | Posições e caixinhas mês a mês, aportes e resgates, e rentabilidade comparada ao CDI, agrupadas em classes que você define, mais uma alocação alvo: defina a participação que quer em cada classe e veja como dividir um valor a investir, sem vender nada, para chegar o mais perto possível dela. |
 | **Contas** | Cada conta e cartão com saldo, limite e detalhes. Desative uma conta para deixá‑la de fora, por exemplo um cartão duplicado. |
 | **Categorias** | Suas categorias em dois níveis. Um modelo de IA local opcional pode sugerir categorias; você aprova cada uma. |
 

@@ -90,7 +90,7 @@ empty: connect MeuPluggy again (step 3 above) and check whether the item id chan
 ## Backup and restore
 
 A backup is one `.zip` file with your edits (categories, rules, reviews, manual
-entries, investment classes and disabled accounts) as Parquet tables, plus the
+entries, investment classes and targets, and disabled accounts) as Parquet tables, plus the
 original Pluggy responses. Public rates and prices are left out; `market-sync`
 downloads them again. Keep the original responses: Pluggy does not promise to keep
 your whole history.
@@ -117,7 +117,7 @@ financial data: keep it somewhere private, not in this repository or a shared fo
 | **Overview** | Spending this month vs. the previous one, month pace against the 6‑month average, where the money went (spent vs. invested), net worth and 12‑month investment return. |
 | **Monthly spending** | 12‑month comparison, categories vs. the previous month, spending by category over time, upcoming card spending (installments already committed), a categories‑by‑month table and the list of expenses, where you set categories. |
 | **To review** | Debits the rules cannot classify on their own, such as a PIX to a person, and money that left a savings box without a reported payment. Include or exclude each one. |
-| **Investments** | Positions and savings boxes by month, contributions and withdrawals, and returns compared with the CDI, grouped into classes you define. |
+| **Investments** | Positions and savings boxes by month, contributions and withdrawals, and returns compared with the CDI, grouped into classes you define, plus a target allocation: set the share you want in each class and see how to split an amount to invest, without selling, to get as close to it as possible. |
 | **Accounts** | Each account and card with its balance, limit and details. Disable an account to leave it out, for example a duplicated card. |
 | **Categories** | Your two‑level categories. An optional local AI model can suggest categories; you approve each one. |
 

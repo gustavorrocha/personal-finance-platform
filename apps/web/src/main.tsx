@@ -17,6 +17,7 @@ import { CashFlow, MonthPace, ReturnsTile, type DailyRow } from "./insights";
 import { ManualExpenses } from "./manual-expenses";
 import { SavingsBoxSuggestions } from "./savings-suggestions";
 import { SyncControl } from "./sync-control";
+import { AllocationPlanner } from "./allocation-view";
 import { Menu, Toast, Help } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
@@ -1255,6 +1256,7 @@ function App() {
                 locale={locale}
               />
             </div>
+            <AllocationPlanner locale={locale} />
             {data.month && (
               <MonthlyInvestmentPositions
                 month={data.month}

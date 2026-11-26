@@ -3,8 +3,8 @@
 Everything else is derived: Silver comes from replaying the captures and public rates
 and prices can be downloaded again. Importing only adds what is missing: captures are
 written create-only and replayed, and edit rows the database already has (same
-`event_id`, or the same values) are skipped, so importing the same archive twice changes nothing and newer local edits
-keep winning.
+`event_id`, or the same values) are skipped, so importing the same archive twice
+changes nothing and newer local edits keep winning.
 """
 
 import hashlib
@@ -35,6 +35,7 @@ EDIT_TABLES = (
     "account_settings",
     "investment_classes",
     "investment_class_assignments",
+    "investment_class_targets",
     "inferred_payment_dismissals",
 )
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
