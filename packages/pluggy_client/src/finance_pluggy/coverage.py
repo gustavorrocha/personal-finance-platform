@@ -167,13 +167,36 @@ def audit_source(client: Pluggy, source: str, item_id: str) -> dict:
     return report
 
 
+def credentials_file() -> dict[str, str]:
+    """KEY=VALUE lines from secrets/pluggy.env in the private directory, if present."""
+    private = os.environ.get("FINANCE_PRIVATE_DIR", "").strip()
+    if not private:
+        return {}
+    path = os.path.join(private, "secrets", "pluggy.env")
+    if not os.path.isfile(path) or os.path.islink(path):
+        return {}
+    values = {}
+    with open(path, encoding="utf-8-sig") as stream:
+        for line in stream:
+            key, separator, value = line.strip().partition("=")
+            if separator and key.startswith("PLUGGY_"):
+                values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
 @contextmanager
 def configured_client(max_pages: int):
     names = ("PLUGGY_CLIENT_ID", "PLUGGY_CLIENT_SECRET", "PLUGGY_ITEM_IDS")
-    missing = [name for name in names if not os.environ.get(name, "").strip()]
+    stored = credentials_file()
+    # Environment variables win over the private file.
+    config = {name: os.environ.get(name, "").strip() or stored.get(name, "") for name in names}
+    missing = [name for name in names if not config[name]]
     if missing:
-        raise AuditError("Configure the following environment variables: " + ", ".join(missing))
-    client_id, secret, configured_items = (os.environ[name].strip() for name in names)
+        raise AuditError(
+            "Configure the following in the environment or secrets/pluggy.env: "
+            + ", ".join(missing)
+        )
+    client_id, secret, configured_items = (config[name] for name in names)
     try:
         values = json.loads(configured_items)
     except (ValueError, RecursionError):
