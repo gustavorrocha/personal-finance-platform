@@ -1,156 +1,160 @@
 # Personal Finance Platform
 
-This local workspace uses ClickHouse as its only database. It supports synthetic
-validation and optional sync of existing Pluggy connections into immutable Bronze
-captures and typed Silver views. The localhost dashboard shows monthly spending and
-lets you correct local merchant categories.
+🇧🇷 [Leia em português](README.pt-BR.md)
 
-## Try the spending dashboard
+A personal finance dashboard for Brazilian bank accounts that runs entirely on your
+machine. Account, card and investment data come from
+[Open Finance Brasil](https://openfinancebrasil.org.br), accessed through
+[Pluggy](https://pluggy.ai); public rates and prices value the investments.
 
-After bootstrap, run these commands in the same PowerShell session:
+```mermaid
+flowchart LR
+    banks["Your banks<br/>(Open Finance)"] --> pluggy["Pluggy<br/>(Meu Pluggy)"]
+    pluggy -- "finance sync" --> lake["Private raw copies<br/>(local folder)"]
+    lake --> db[("ClickHouse<br/>(local)")]
+    market["Public rates and prices<br/>(Banco Central, Tesouro,<br/>CVM, B3)"] -- "finance market-sync" --> db
+    you["Your edits:<br/>categories, reviews,<br/>manual entries"] --> db
+    db --> dash["Dashboard<br/>127.0.0.1:8080"]
+```
+
+## 1. Connect your banks through Pluggy
+
+Pluggy gives free personal access to your own Open Finance data through
+[Meu Pluggy](https://meu.pluggy.ai): up to 5 connections, no commercial use. See
+Pluggy's [personal use guide](https://docs.pluggy.ai/en/docs/guides/meu-pluggy-personal-use).
+
+1. Sign up at [meu.pluggy.ai](https://meu.pluggy.ai) and authorize each bank. Each
+   consent is valid for 12 months.
+2. Sign in to the [Pluggy Dashboard](https://dashboard.pluggy.ai) with the same
+   account and create an application under **Applications**. Keep its Client ID and
+   Client Secret in your password manager; the secret is shown only once.
+3. On the application's **Demo** page, click **Connect Account** and choose the
+   **MeuPluggy** connector, not your bank's. Copy the id of each item under
+   **Connected Items**.
+
+## 2. Install and run
+
+Requirements: Windows with PowerShell 5.1+, Python 3.12, [uv](https://docs.astral.sh/uv/),
+Node 24 and Docker Desktop (Linux engine, at least 6 GB of memory). From the
+repository root:
 
 ```powershell
-.\scripts\run_local.ps1
-uv run --frozen finance demo-spending
+.\scripts\bootstrap.ps1     # once: creates the private data folder and secrets
+.\scripts\run_local.ps1     # starts the database, the dashboard and the updater
 Start-Process http://127.0.0.1:8080
 ```
 
-Select **Synthetic demo** if you have multiple connections. November 2026 shows
-**BRL 257.03** across seven posted entries. Change the category of one West Market
-row to check that all three matching entries update. In **Debit review**, include
-the Harbor Books debit to see the total rise to **BRL 280.53**. Reset the
-decision to return to **BRL 257.03**. The demo uses invented data and
-requires no Pluggy credentials. See the [spending runbook](docs/spending.md).
+`bootstrap.ps1` keeps data and secrets outside Git, in
+`%LOCALAPPDATA%\PersonalFinancePhase0` by default. Use a disk with encryption and
+keep an independent backup.
 
-The optional [local category model](docs/local-classification.md) can suggest
-categories for uncategorized expenses. You review each suggestion before applying it.
+To look around first without a Pluggy account, run
+`uv run --frozen finance demo-spending` and pick **Synthetic demo** in the
+connection selector.
 
-## Run on Windows
+To stop everything: `docker compose --env-file .env -f infra/compose.yaml down`.
 
-Use PowerShell 5.1+, Python 3.12, uv 0.11.6, Node 24, npm 11.17.0, and Docker Desktop
-with the Linux engine and Compose v2+. Allocate at least 6 GB to Docker and run from a
-regular PowerShell session at the repository root.
+## 3. Update your data
 
-```powershell
-.\scripts\bootstrap.ps1
-.\scripts\check.ps1
-.\scripts\run_local.ps1
-Invoke-RestMethod http://127.0.0.1:8000/health
-Start-Process http://127.0.0.1:8080
+Save the Pluggy credentials once in `secrets\pluggy.env` inside the private folder
+(`%LOCALAPPDATA%\PersonalFinancePhase0\secrets\pluggy.env` by default). The private
+folder is outside Git and cloud sync and readable only by your Windows user:
+
+```ini
+PLUGGY_CLIENT_ID=<client id>
+PLUGGY_CLIENT_SECRET=<client secret>
+PLUGGY_ITEM_IDS=["<item id>", "<another item id>"]
 ```
 
-Bootstrap defaults to `%LOCALAPPDATA%\PersonalFinancePhase0` and grants access to the
-current user and SYSTEM. To choose another location, pass `-PrivateDir C:\finance-phase0`.
-Use private local storage outside Git and cloud sync. Bootstrap refuses preexisting
-directories without its ownership marker. The local `.env` stores the path, and generated
-secrets live in separate private files.
+Environment variables with the same names take precedence over the file.
 
-The startup script starts ClickHouse and Ollama, applies checksum-tracked migrations,
-and starts the API and frontend. The API reports foundation health at
-`http://127.0.0.1:8000/health` and serves its schema at `/openapi.json`.
-The frontend serves the localhost spending dashboard. ClickHouse and Ollama use internal networks.
-See the [foundation validation report](docs/phase-0-results.md) for the measured Docker
-Desktop frontend egress behavior.
+Then update in either of two ways:
 
-## Validate and replay Bronze
+- **From the dashboard:** the badge in the header shows when the data was last
+  updated. Open it to see each connection's last update and click **Update now**.
+  `run_local.ps1` starts the background updater that runs the request; the badge
+  warns when it is not running.
+- **From PowerShell:**
 
-With the stack running, execute the acceptance script and inspect the fixture capture.
+  ```powershell
+  .\scripts\sync.ps1          # bank data, then public rates and prices
+  .\scripts\sync.ps1 -Full    # read the whole available history again
+  ```
 
-```powershell
-.\scripts\validate_bronze.ps1
-uv run --frozen finance lake list
-uv run --frozen finance lake verify
-uv run --frozen finance lake ingest-synthetic --fixtures tests/fixtures/synthetic
-uv run --frozen finance replay --run-id 11111111-1111-4111-8111-111111111111
-uv run --frozen finance rebuild-warehouse --from-bronze
-```
+Only one update runs at a time. The first one reads all available history; later
+ones read what is new plus the last 45 days, so status changes and reversals are
+picked up. Meu Pluggy refreshes its data from the banks every 24 hours, so updating
+more than once a day brings nothing new. When a consent expires, reads come back
+empty: connect MeuPluggy again (step 3 above) and check whether the item id changed.
 
-The validation script loads `FINANCE_PRIVATE_DIR` into the current shell. The CLI uses
-that directory's `lake` child. To select a different private path, put
-`--root <absolute-private-path>` before the subcommand.
+## Backup and restore
 
-The fixtures produce one run, two compressed response objects, and three replay records.
-Retry the same capture with the same UUID, timestamp, and bytes. Assign a new UUID for a
-new observation. Filesystem listing and verification run offline. Capture registration,
-warehouse replay, and rebuild use Docker exec against local ClickHouse.
+A backup is one `.zip` file with your edits (categories, rules, reviews, manual
+entries, investment classes and disabled accounts) as Parquet tables, plus the
+original Pluggy responses. Public rates and prices are left out; `market-sync`
+downloads them again. Keep the original responses: Pluggy does not promise to keep
+your whole history.
 
-Read synthetic state through `metadata.bronze_objects_current` and
-`metadata.synthetic_bronze_records_published`. Run warehouse writers serially. The synthetic
-rebuild publishes a complete generation after validation. The acceptance script also rebuilds
-into an independent temporary ClickHouse instance and checks that corruption cannot replace
-published rows.
+- **From the dashboard:** open the header badge, click **Export backup** and then
+  **Download backup**; to restore, click **Import backup** and pick the file.
+- **From PowerShell:**
 
-See [Phase 1 results](docs/phase-1-results.md), [data contracts](docs/data-contracts.md),
-and [the publication decision](docs/adr/ADR-014-bronze-replay-publication.md).
+  ```powershell
+  .\scripts\export.ps1                  # saved in exports\ inside the private folder
+  .\scripts\import.ps1 -Path <file.zip>
+  ```
 
-## Audit provider coverage
+Importing only adds what is missing: new original responses are stored and
+processed, and edits the database already has are skipped. Nothing is deleted or
+overwritten, so importing the same file twice changes nothing. To move to another
+computer, run steps 1 and 2 there and import the file. The archive holds your
+financial data: keep it somewhere private, not in this repository or a shared folder.
 
-Phase 2 adds `uv run --frozen finance audit-coverage --redact` for existing Pluggy
-connections. See the [coverage runbook](docs/provider-coverage.md)
-for local credential configuration and how to interpret the redacted report.
+## What the dashboard shows
 
-## Sync and verify Silver
-
-Run the synthetic integration check against disposable ClickHouse using the local Compose
-configuration created during bootstrap.
-
-```powershell
-$env:FINANCE_TEST_CLICKHOUSE = '1'
-uv run --frozen pytest -q tests/test_provider_ingestion.py
-Remove-Item Env:\FINANCE_TEST_CLICKHOUSE
-```
-
-The [provider ingestion runbook](docs/provider-ingestion.md) covers first and incremental
-syncs, local aggregate checks, failure recovery, and applying reviewed deletion events.
-
-## Foundation checks and shutdown
-
-For a local database GUI, run `scripts/clickhouse_gui.ps1` and connect over HTTP to
-`127.0.0.1:8123` with user `finance_reader`, database `metadata`, and the password
-in `secrets/finance-reader.password` under the private storage directory.
-See the [GUI runbook](docs/operations-runbook.md#optional-clickhouse-gui) to disable access.
-
-```powershell
-.\scripts\load_synthetic.ps1
-.\scripts\verify_security.ps1
-.\scripts\backup.ps1
-.\scripts\restore_test.ps1
-docker compose --env-file .env -f infra/compose.yaml down
-```
-
-The foundation backup seals the `metadata.synthetic_events` probe table in an AES-256-GCM
-envelope. Backup files are in the private `backups` directory and the key is in
-`keys/backup.key`. The restore check uses an independent container and compares ordered rows.
-The Lake needs an independent backup before real-data use.
-
-| Path | Responsibility |
+| Tab | What you see |
 |---|---|
-| `apps/api`, `apps/web` | FastAPI health endpoint and static React frontend |
-| `packages/lake` | ObjectStore, local backend, manifests, and file replay |
-| `packages/ingestion` | Local CLI, provider collection, ClickHouse indexing and Silver replay |
-| `infra`, `scripts` | Compose, SQL migrations, and operator commands |
-| `tests`, `.github/workflows/ci.yml` | Synthetic tests and CI |
+| **Overview** | Spending this month vs. the previous one, month pace against the 6‑month average, where the money went (spent vs. invested), net worth and 12‑month investment return. |
+| **Monthly spending** | 12‑month comparison, categories vs. the previous month, spending by category over time, upcoming card spending (installments already committed), a categories‑by‑month table and the list of expenses, where you set categories. |
+| **To review** | Debits the rules cannot classify on their own, such as a PIX to a person, and money that left a savings box without a reported payment. Include or exclude each one. |
+| **Investments** | Positions and savings boxes by month, contributions and withdrawals, and returns compared with the CDI, grouped into classes you define. |
+| **Accounts** | Each account and card with its balance, limit and details. Disable an account to leave it out, for example a duplicated card. |
+| **Categories** | Your two‑level categories. An optional local AI model can suggest categories; you approve each one. |
 
-Dependency versions are locked in `uv.lock` and `apps/web/package-lock.json`.
-Use `scripts/check.ps1` for lint, tests, the frontend build, and its dependency audit.
-Start the container API through Compose. For a manual Uvicorn run on the host, bind
-it to `127.0.0.1`.
+All screens filter by connection and month and are available in English and
+Brazilian Portuguese.
 
-See the [implementation plan](docs/implementation-plan.md), [operations runbook](docs/operations-runbook.md),
-[threat model](docs/threat-model.md), and [ADRs](docs/adr/README.md). Acceptance tests use
-synthetic data. Disk encryption, independent backups, and an approved retention policy
-are operational prerequisites for real data.
+## What counts
 
-## Interface translations
+- **Spending:** card purchases (including pending ones, marked as such until the
+  bill closes) and account debits the bank files under a consumption category, such
+  as a bill paid by PIX or boleto. Refunds are subtracted.
+- **Not spending:** card bill payments, transfers between your own accounts,
+  investment and savings‑box movements, and cashback.
+- **Your input:** debits you include in **To review**, and manual or recurring
+  entries for payments the bank does not report. An entry with the payee's CNPJ is
+  skipped in months that already have a reported payment to it, so nothing counts
+  twice.
+- **Net worth:** investments and bank balances minus everything the cards owe,
+  including future installments. It reflects the latest balances, not history.
+- **Disabled accounts** are left out of spending and of account and card balances.
 
-Edit `apps/web/src/messages.en-US.json` and regenerate Brazilian Portuguese using
-an installed local Ollama model while the stack is running.
+Categories come from the bank's category and the merchant, and every change you make
+becomes a rule for similar transactions.
 
-```powershell
-npm --prefix apps/web run translate -- --model qwen3:1.7b
-```
+## Privacy
 
-Review and commit the generated catalog. The translator sends only interface
-strings to local Ollama and regenerates only new or changed entries. Lint checks
-for stale translations and mismatched placeholders. Builds use the checked-in
-catalogs. Spending categories and event descriptions display as supplied.
+Raw Pluggy responses, the database and your edits stay in the private folder on your
+machine. The dashboard listens only on `127.0.0.1`, and the optional AI model runs
+locally through Ollama. `market-sync` downloads whole public series, so those sources
+learn nothing about your portfolio; the one exception is a stock missing from B3's
+files, whose ticker is asked for by name from Yahoo Finance.
+
+## Development
+
+`.\scripts\check.ps1` runs lint, tests and the frontend build. Code, documentation and
+commit messages are in English; interface strings are translated with
+`npm --prefix apps/web run translate`. Architecture, data contracts and runbooks are in
+[`docs/`](docs): start with [architecture](docs/architecture.md),
+[spending rules](docs/spending.md), [provider ingestion](docs/provider-ingestion.md)
+and [operations](docs/operations-runbook.md).
