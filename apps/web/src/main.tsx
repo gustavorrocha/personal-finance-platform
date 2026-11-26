@@ -16,6 +16,7 @@ import {
 import { CashFlow, MonthPace, ReturnsTile, type DailyRow } from "./insights";
 import { ManualExpenses } from "./manual-expenses";
 import { SavingsBoxSuggestions } from "./savings-suggestions";
+import { SyncControl } from "./sync-control";
 import { Menu, Toast, Help } from "./ui";
 import type { HistoryRow, InvestmentRow } from "./spending-history";
 import {
@@ -346,6 +347,7 @@ function App() {
   const categories = data?.categories ?? [];
   // Keep showing the last result while a new one loads, so the page does not jump.
   const ready = Boolean(data) && error !== "loadError";
+  const reload = useCallback(() => setRevision((value) => value + 1), []);
   const dismissToast = useCallback(() => {
     setNotice(undefined);
     setError((current) => (current === "loadError" ? current : undefined));
@@ -578,6 +580,7 @@ function App() {
         <div className="frame masthead">
           <span className="brand">{copy.brand}</span>
           <div className="header-controls">
+            <SyncControl locale={locale} onUpdated={reload} />
             <span className="private">{copy.workspace}</span>
             <label className="language">
               {copy.language}
