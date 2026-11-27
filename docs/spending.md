@@ -1,6 +1,6 @@
 # Private spending dashboard
 
-Run the [synthetic demo](../README.md#try-the-spending-dashboard) to browse net
+Run the [synthetic demo](../README.md#2-install-and-run) to browse net
 spending by month, connection and currency. Categories have two levels and are
 edited under **Categories**; see [Categories](#categories).
 

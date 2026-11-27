@@ -27,7 +27,13 @@ the configured private directory. Use a name beginning with
 Preserve the original Windows data directory until recovery is verified. After
 the switch it is a point-in-time copy, so keep backing up the active database.
 
-Run `scripts/validate_bronze.ps1` after startup to verify retries, quarantine, and isolated reconstruction. Run capture and warehouse publication with one writer at a time. If ClickHouse is lost, preserve the private Lake, apply the migrations to a fresh instance, and run `finance rebuild-warehouse --from-bronze`. If indexing fails after the manifest is published, retry the capture or replay its UUID once ClickHouse is available. Preserve quarantined evidence for investigation. The foundation backup covers the probe table, and the Lake needs an independent backup.
+Run `scripts/validate_bronze.ps1` after startup to verify retries, quarantine, and isolated reconstruction. Run capture and warehouse publication with one writer at a time. If ClickHouse is lost, preserve the private Lake, apply the migrations to a fresh instance, and run `finance rebuild-warehouse --from-bronze`. If indexing fails after the manifest is published, retry the capture or replay its UUID once ClickHouse is available. Preserve quarantined evidence for investigation. The foundation backup covers the probe table; `finance export` (below) covers the Lake and the edits.
+
+## Updates and backups
+
+`finance sync-agent` runs the updates, exports and imports requested from the dashboard. `run_local.ps1` restarts it and keeps its PID in `sync-agent.pid` in the private directory; it stops at logoff, and the dashboard badge reports it as off when its heartbeat is older than 90 seconds. It reads Pluggy credentials from the environment or from `secrets/pluggy.env`. The agent, `finance sync`, `market-sync`, `export` and `import` take the same `sync.lock`, so a second writer fails fast with "busy" instead of waiting.
+
+`finance export <file>` writes a zip with the edit tables as Parquet, the raw Lake objects and a manifest with SHA-256 checksums; public market data is left out. The archive is not encrypted: keep it in the private directory or on encrypted media. To recover after losing ClickHouse or the Lake, apply the migrations to a fresh instance and run `finance import <file>`: it writes missing Lake objects create-only, replays the new captures and adds the edit rows that are not there yet. Imports never delete or overwrite, so repeating one is safe. The dashboard accepts archives up to 32 MiB; use the CLI for larger ones.
 
 ## Optional ClickHouse GUI
 

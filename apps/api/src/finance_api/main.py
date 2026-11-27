@@ -11,6 +11,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .accounts import router as accounts_router
 from .investments import router as investments_router
 from .spending import router
+from .sync import router as sync_router
 
 
 async def check_database() -> bool:
@@ -37,6 +38,7 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(accounts_router)
 app.include_router(investments_router)
+app.include_router(sync_router)
 
 
 @app.exception_handler(RequestValidationError)

@@ -14,3 +14,4 @@ private_data/
 *.key
 *.log
 artifacts/
+finance-backup-*.zip

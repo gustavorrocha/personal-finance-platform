@@ -1,6 +1,7 @@
 """Private Lake operations, provider sync, and offline replay."""
 
 import argparse
+import base64
 import json
 import os
 import subprocess
@@ -15,6 +16,8 @@ from finance_lake.bronze import BronzeLake, CapturePage
 from finance_pluggy.client import AuditError
 from finance_pluggy.coverage import audit_from_environment, configured_client, identifier
 
+from .agent import Busy, JobError, serve, writer_lock
+from .backup import export_archive, import_archive
 from .collection import collect, entity_key, item_key
 from .market import sync_market
 from .silver import SilverWarehouse
@@ -26,6 +29,13 @@ from .warehouse import BronzeWarehouse
 class SafeArgumentParser(argparse.ArgumentParser):
     def error(self, message):
         self.exit(2, "Invalid finance command; use --help for supported arguments.\n")
+
+
+def private_root() -> Path:
+    private = os.environ.get("FINANCE_PRIVATE_DIR")
+    if not private:
+        raise ValueError("Configure private storage before operating the Lake")
+    return Path(private)
 
 
 def docker_sql(query: str, native: bytes = b"") -> bytes:
@@ -83,6 +93,66 @@ def sync(silver: SilverWarehouse, *, full: bool) -> dict:
     return {"runs": runs}
 
 
+def update(silver: SilverWarehouse) -> dict:
+    """What the dashboard's update button runs: provider sync, then public prices."""
+    try:
+        runs = sync(silver, full=False)["runs"]
+    except AuditError:
+        return {"failed": True, "error": "credentials"}
+    detail = {
+        "connections": len(runs),
+        "failed": sum(run["status"] in ("failed", "partial") for run in runs),
+        "records": sum(run.get("records", 0) for run in runs),
+    }
+    try:
+        with httpx.Client(timeout=120, trust_env=False) as http:
+            sync_market(docker_sql, http)
+    except (httpx.HTTPError, ValueError, RuntimeError, subprocess.SubprocessError):
+        detail["market"] = "failed"
+    return detail
+
+
+def replayer(silver: SilverWarehouse, warehouse: BronzeWarehouse):
+    def replay(run_id: UUID) -> int:
+        target = silver if warehouse.read_manifest(run_id).source == "pluggy" else warehouse
+        return target.replay(run_id)
+
+    return replay
+
+
+def agent_jobs(private: Path, silver: SilverWarehouse, warehouse: BronzeWarehouse) -> dict:
+    """What the dashboard can ask the host agent to do; archives travel through ClickHouse."""
+
+    def locked_update(_request: str) -> dict:
+        with writer_lock(private):
+            return update(silver)
+
+    def export(request: str) -> dict:
+        with writer_lock(private):
+            data = export_archive(docker_sql, silver.lake.store)
+        row = {
+            "request_id": str(UUID(request)),
+            "direction": "export",
+            "data": base64.b64encode(data).decode(),
+        }
+        docker_sql(
+            "INSERT INTO core.agent_files (request_id, direction, data) FORMAT JSONEachRow",
+            json.dumps(row).encode(),
+        )
+        return {"bytes": len(data)}
+
+    def restore(request: str) -> dict:
+        encoded = docker_sql(
+            "SELECT data FROM core.agent_files WHERE direction = 'import' "
+            f"AND request_id = toUUID('{UUID(request)}') LIMIT 1 FORMAT TSVRaw"
+        )
+        data = base64.b64decode(encoded.strip(), validate=True)
+        with writer_lock(private):
+            return import_archive(docker_sql, silver.lake, data, replayer(silver, warehouse))
+
+    return {"sync": locked_update, "export": export, "import": restore}
+
+
 def apply_deletions(silver: SilverWarehouse, raw: bytes, received_at: datetime) -> int:
     event = json.loads(raw)
     if not isinstance(event, dict) or event.get("event") != "transactions/deleted":
@@ -123,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
     sync_parser = commands.add_parser("sync", help="Collect existing provider items")
     sync_parser.add_argument("--full", action="store_true", help="Read full available history")
     commands.add_parser("market-sync", help="Download public rates and Tesouro, fund and B3 prices")
+    commands.add_parser("sync-agent", help="Run the jobs requested from the dashboard")
+    export = commands.add_parser("export", help="Write a backup archive of edits and captures")
+    export.add_argument("output", type=Path)
+    restore = commands.add_parser("import", help="Add what is missing from a backup archive")
+    restore.add_argument("archive", type=Path)
     commands.add_parser("demo-spending", help="Load a synthetic spending connection")
     commands.add_parser("demo-accounts", help="Load synthetic account balances")
     commands.add_parser("demo-investments", help="Load synthetic investment positions")
@@ -152,20 +227,20 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "market-sync":
         try:
-            with httpx.Client(timeout=120, trust_env=False) as http:
+            with writer_lock(private_root()), httpx.Client(timeout=120, trust_env=False) as http:
                 summary = sync_market(docker_sql, http)
-        except (httpx.HTTPError, ValueError, RuntimeError, subprocess.SubprocessError):
+        except Busy:
+            print("Another update is running; try again when it ends.", file=sys.stderr)
+            return 1
+        except (httpx.HTTPError, ValueError, RuntimeError, OSError, subprocess.SubprocessError):
             print("Rate download failed; details suppressed.", file=sys.stderr)
             return 1
         print(json.dumps(summary, sort_keys=True))
         return 0
     try:
-        root = args.root
-        if root is None:
-            private = os.environ.get("FINANCE_PRIVATE_DIR")
-            if not private:
-                raise ValueError("Configure private storage before operating the Lake")
-            root = Path(private) / "lake"
+        root = args.root or private_root() / "lake"
+        # The writer lock lives in the private directory, next to the Lake.
+        private = root.parent
         lake = BronzeLake(LocalObjectStore(root))
         warehouse = BronzeWarehouse(lake, docker_sql)
         silver = SilverWarehouse(warehouse, docker_sql)
@@ -209,8 +284,21 @@ def main(argv: list[str] | None = None) -> int:
                 silver if warehouse.read_manifest(args.run_id).source == "pluggy" else warehouse
             )
             summary = {"status": "complete", "records": target.replay(args.run_id)}
+        elif args.command == "sync-agent":
+            serve(docker_sql, agent_jobs(private, silver, warehouse))
+            return 0
+        elif args.command == "export":
+            with writer_lock(private):
+                data = export_archive(docker_sql, lake.store)
+            args.output.write_bytes(data)
+            summary = {"status": "complete", "bytes": len(data)}
+        elif args.command == "import":
+            data = args.archive.read_bytes()
+            with writer_lock(private):
+                summary = import_archive(docker_sql, lake, data, replayer(silver, warehouse))
         elif args.command == "sync":
-            summary = sync(silver, full=args.full)
+            with writer_lock(private):
+                summary = sync(silver, full=args.full)
             exit_code = int(any(run["status"] in ("failed", "partial") for run in summary["runs"]))
         elif args.command == "demo-spending":
             summary = {"status": "complete", "records": load_demo(silver)}
@@ -233,6 +321,12 @@ def main(argv: list[str] | None = None) -> int:
             count = warehouse.rebuild() if any(m.source == "synthetic" for m in manifests) else 0
             count += sum(silver.replay(m.run_id) for m in manifests if m.source == "pluggy")
             summary = {"status": "complete", "records": count}
+    except Busy:
+        print("Another update is running; try again when it ends.", file=sys.stderr)
+        return 1
+    except JobError as error:
+        print(str(error), file=sys.stderr)
+        return 1
     except Exception:
         print(
             "Finance operation failed; sensitive details suppressed. "
